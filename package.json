@@ -1,0 +1,23 @@
+{
+  "name": "aether-trade-monorepo",
+  "version": "1.0.0",
+  "description": "Sistema de Arbitraje Inteligente Ravstore",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "libs/*"
+  ],
+  "scripts": {
+    "install:all": "npm install",
+    "dev:landing": "npm run dev -w apps/landing-next",
+    "dev:workers": "npm run dev -w apps/workers-ai",
+    "dev:api": "npm run dev -w apps/api-gateway",
+    "build:all": "npm run build --workspaces",
+    "fix:types": "npm install -D @types/node --workspaces",
+    "test:all": "npm test --workspaces"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "typescript": "^5.3.3"
+  }
+}
