@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: aethertrade_db
+    restart: always
+    environment:
+      POSTGRES_USER: user_admin
+      POSTGRES_PASSWORD: password_secure
+      POSTGRES_DB: aether_db
+    ports:
+      - "5432:5432"
+    volumes:
+      # Esta línea es la clave: ejecuta el SQL al iniciar por primera vez
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
+      # Persistencia de datos para que no se borren al apagar el contenedor
+      - aether_db_data:/var/lib/postgresql/data
+
+volumes:
+  aether_db_data:

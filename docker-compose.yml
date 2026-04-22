@@ -1,0 +1,52 @@
+version: '3.8'
+
+services:
+  # 1. La Fuente de Verdad (Postgres)
+  db:
+    image: postgres:15-alpine
+    container_name: aether_db
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./infrastructure/db/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - aether-network
+
+  # 2. Orquestador de Tráfico (Express)
+  api-gateway:
+    build: ./apps/api-gateway
+    container_name: aether_gateway
+    depends_on:
+      - db
+    environment:
+      - DATABASE_URL=postgres://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_NAME}
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
+    ports:
+      - "3000:3000"
+    networks:
+      - aether-network
+
+  # 3. El Trabajador de IA (Scraping + Gemini)
+  workers-ai:
+    build: ./apps/workers-ai
+    container_name: aether_worker
+    depends_on:
+      - db
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GOOGLE_SEARCH_API_KEY=${GOOGLE_SEARCH_API_KEY}
+      - GOOGLE_SEARCH_CX=${GOOGLE_SEARCH_CX}
+    networks:
+      - aether-network
+
+networks:
+  aether-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
