@@ -1,0 +1,19 @@
+# Dependencias (Nunca se suben, pesan GBs)
+node_modules/
+.pnpm-store/
+
+# Construcción y caché
+.next/
+dist/
+build/
+*.log
+
+# SECRETOS (Lo más importante)
+.env
+.env.local
+.env.production
+infrastructure/db/data/
+
+# OS específicos
+.DS_Store
+Thumbs.db
