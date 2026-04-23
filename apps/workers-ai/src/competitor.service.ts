@@ -1,60 +1,58 @@
-import axios from 'axios';
-import { query } from './database'; // Importamos tu conexión a Postgres
+import { AliExpressService } from './aliexpress.service';
+import { ScraperService } from './services/scraper.service';
+import { GeminiService } from './gemini.service';
 
 export class CompetitorService {
-  private apiKey = process.env.GOOGLE_SEARCH_API_KEY;
-  private cx = process.env.GOOGLE_SEARCH_CX;
-  private CACHE_TTL_HOURS = 12; // Tiempo de vida de la búsqueda
+  constructor(
+    private aliExpress = new AliExpressService(),
+    private scraper = new ScraperService(),
+    private gemini = new GeminiService()
+  ) {}
 
-  async getCompetitorPrices(productName: string, countryCode: string): Promise<any[]> {
-    // 1. INTENTO DE CACHÉ: Buscamos si ya investigamos esto recientemente
-    const cachedData = await this.checkCache(productName, countryCode);
-    
-    if (cachedData) {
-      console.log(`📦 Cache Hit: Usando datos locales para ${productName} (${countryCode})`);
-      return cachedData;
+  /**
+   * Orquestación de análisis completo.
+   * Ahora requiere 'targetCountry' para aplicar lógica fiscal de Chile o España.
+   */
+  async runFullAnalysis(query: string, targetCountry: string = 'ES', vatRate: number = 21) {
+    try {
+      console.log(`\n🔍 Analizando mercado [${targetCountry}]: ${query}...`);
+      
+      // 1. Llamada sincronizada con los nuevos nombres de métodos y parámetros regionales
+      const [aliItems, marketResults] = await Promise.all([
+        this.aliExpress.searchTrending(query, targetCountry), // Antes era searchProduct
+        this.scraper.getCompetitorPrices(query, targetCountry) // Ahora requiere el país
+      ]);
+
+      if (!aliItems || aliItems.length === 0) {
+        throw new Error(`No se encontraron productos en AliExpress para: ${query}`);
+      }
+
+      const bestAli = aliItems[0];
+      const aliData = {
+        title: bestAli.title,
+        price: parseFloat(bestAli.price?.value || "0"),
+        shipping: parseFloat(bestAli.shipping_value || "0") // Ajustado según el schema de RapidAPI
+      };
+
+      // 2. Análisis de Arbitraje con lógica fiscal dinámica
+      const result = await this.gemini.analyzeArbitrage(
+        aliData, 
+        marketResults, 
+        targetCountry, 
+        vatRate
+      );
+      
+      return {
+        product: aliData.title,
+        verdict: result,
+        sources: { 
+          ali: `https://www.aliexpress.com/item/${bestAli.item_id}.html`, 
+          marketCount: marketResults.length 
+        }
+      };
+    } catch (error: any) {
+      console.error("❌ Error en la orquestación de CompetitorService:", error.message);
+      throw error;
     }
-
-    // 2. MISS: Si no hay caché o expiró, vamos a Google
-    console.log(`🔍 Cache Miss: Consultando Google Search API para ${productName}`);
-    const freshResults = await this.fetchFromGoogle(productName, countryCode);
-
-    // 3. PERSISTENCIA: Guardamos para la próxima vez
-    if (freshResults.length > 0) {
-      await this.saveToCache(productName, countryCode, freshResults);
-    }
-
-    return freshResults;
-  }
-
-  private async checkCache(name: string, country: string) {
-    const res = await query(
-      `SELECT competitor_data FROM products 
-       WHERE (sku = $1 OR competitor_data->>'search_query' = $1) 
-       AND created_at > NOW() - INTERVAL '${this.CACHE_TTL_HOURS} hours'
-       LIMIT 1`,
-      [name]
-    );
-    return res.rows[0]?.competitor_data?.results || null;
-  }
-
-  private async saveToCache(name: string, country: string, results: any[]) {
-    // Guardamos la búsqueda como un registro de inteligencia
-    const payload = { search_query: name, country, results, timestamp: new Date() };
-    await query(
-      `INSERT INTO products (sku, status, competitor_data) 
-       VALUES ($1, 'market_research', $2)
-       ON CONFLICT (sku) DO UPDATE SET competitor_data = $2, created_at = NOW()`,
-      [`SEARCH_${name.replace(/\s+/g, '_')}`, JSON.stringify(payload)]
-    );
-  }
-
-  private async fetchFromGoogle(productName: string, countryCode: string) {
-    // ... (Misma lógica de axios.get de la respuesta anterior) ...
-    // Solo se ejecuta si checkCache devuelve null
-    const response = await axios.get('https://www.googleapis.com/customsearch/v1', {
-      params: { key: this.apiKey, cx: this.cx, q: productName }
-    });
-    return this.parseResults(response.data.items);
   }
 }

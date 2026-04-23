@@ -1,30 +1,47 @@
-import { AliExpressService } from './aliexpress.service';
-import { CompetitorService } from './competitor.service';
-import { GeminiService } from './gemini.service';
-import { query } from './database';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import dotenv from 'dotenv';
 
-async function processDiscovery(keywords: string, market: string) {
-  const ali = new AliExpressService();
-  const comp = new CompetitorService();
-  const ai = new GeminiService();
+// En ESM (módulos), necesitamos reconstruir __dirname para rutas relativas seguras
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-  // 1. Buscar en AliExpress
-  const items = await ali.searchProduct(keywords);
-  const bestMatch = items[0];
+// Subimos niveles: de src -> workers-ai -> apps -> raíz
+const rootEnvPath = path.resolve(__dirname, '../../../.env');
 
-  // 2. Buscar precios de la competencia en el mercado destino
-  const marketPrices = await comp.getCompetitorPrices(bestMatch.title, market);
+const result = dotenv.config({ path: rootEnvPath });
 
-  // 3. Dejar que Gemini analice la viabilidad
-  const analysis = await ai.generateStrategy(bestMatch, marketPrices, market);
-
-  // 4. Lógica de Negocio: ¿Es rentable?
-  if (analysis.suggestedPrice > bestMatch.price * 1.5) { // Ejemplo: margen > 50%
-    await query(
-      `INSERT INTO products (sku, aliexpress_id, base_cost_usd, competitor_data, status) 
-       VALUES ($1, $2, $3, $4, $5)`,
-      [bestMatch.sku, bestMatch.id, bestMatch.price, JSON.stringify(marketPrices), 'pending_review']
-    );
-    console.log(`🔥 Winner detectado: ${bestMatch.title} para mercado ${market}`);
-  }
+// Log de diagnóstico Senior para estar 100% seguros
+if (result.error) {
+  console.error(`❌ No se encontró el .env en la raíz: ${rootEnvPath}`);
+} else {
+  console.log(`✅ .env de la raíz cargado correctamente`);
+  console.log(`🔍 [DEBUG] Serper Key: ${process.env.SERPER_API_KEY ? 'Detectada' : 'Faltante en el archivo'}`);
 }
+
+import express from 'express';
+// Mantener las extensiones .js es correcto si usas NodeNext/ESM
+import { listenForCandidates } from './workers/analysis.worker.js'; 
+import { runDiscoveryTask } from './workers/discovery.worker.js'; 
+
+const app = express();
+const port = process.env.PORT || 8080;
+
+// Iniciamos el worker asíncrono para que escuche Pub/Sub
+listenForCandidates().catch(console.error);
+
+app.get('/health', (req, res) => res.send('Worker AI Online'));
+
+app.post('/trigger-discovery', async (req, res) => {
+  try {
+    await runDiscoveryTask();
+    res.send('Discovery triggered');
+  } catch (error) {
+    console.error('Error en trigger:', error);
+    res.status(500).send('Error triggering discovery');
+  }
+});
+
+app.listen(port, () => {
+  console.log(`🚀 Workers-AI escuchando en puerto ${port}`);
+});

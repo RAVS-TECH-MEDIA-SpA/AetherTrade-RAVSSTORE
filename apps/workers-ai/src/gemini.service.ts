@@ -7,34 +7,35 @@ export class GeminiService {
     generationConfig: { responseMimeType: "application/json" } 
   });
 
-  async analyzeArbitrage(aliData: any, competitors: any[]) {
+ async analyzeArbitrage(aliData: any, competitors: any[], targetCountry: string, taxRate: number) {
     const prompt = `
-      Actúa como un experto en arbitraje de e-commerce europeo. 
-      Analiza si el siguiente producto de AliExpress es un "Winner" comparándolo con los resultados de la competencia en Google.
+      Actúa como experto en E-commerce y Pricing Strategist para el mercado de ${targetCountry}.
+      
+      PRODUCTO ALI: ${aliData.title} | Costo: ${aliData.price} USD | Envío: ${aliData.shipping} USD
+      COMPETENCIA: ${JSON.stringify(competitors)}
 
-      DATOS DE COMPRA (AliExpress):
-      - Título: ${aliData.title}
-      - Costo Producto: ${aliData.price} EUR
-      - Costo Envío: ${aliData.shipping} EUR
-
-      RESULTADOS DE COMPETENCIA (Google Search):
-      ${JSON.stringify(competitors)}
-
-      REGLAS DE CÁLCULO:
-      1. Identifica el precio de venta promedio de los competidores que vendan EXACTAMENTE el mismo producto.
-      2. Calcula el Margen Neto: (Precio Venta / 1.21) - (Costo Producto + Costo Envío) - 1.50 (Comisión Pago).
-      *Nota: 1.21 es el IVA (VAT) estimado del 21% en España/Alemania.
-
-      DEVUELVE UN JSON CON ESTA ESTRUCTURA:
+      REGLAS FISCALES Y DE NEGOCIO:
+      1. IVA (Tax): ${taxRate}% (Ya incluido en el precio final de venta).
+      2. Moneda de Destino: ${targetCountry === 'CL' ? 'CLP' : 'EUR'}.
+      3. Comisión Pasarela: 1.50 USD fijos + 2.9%.
+      
+      OBJETIVO:
+      - Calcula el Margen Neto: (Precio Venta / (1 + ${taxRate}/100)) - (Costo + Envío) - Comisiones.
+      - Genera Marketing Copy en el idioma local de ${targetCountry} (Usa modismos locales si es necesario, ej. Chile vs España).
+      
+      DEVUELVE JSON:
       {
         "isWinner": boolean,
-        "confidenceScore": number (0-1),
-        "suggestedPrice": number,
-        "netMargin": number,
-        "analysis": "Breve explicación de por qué es o no un winner",
-        "competitorMatch": "Título del competidor más cercano"
-      }
-    `;
+        "suggestedPriceLocal": number,
+        "netMarginUsd": number,
+        "roiPercent": number,
+        "marketingCopy": {
+          "headline": "Título persuasivo",
+          "description": "Descripción larga con beneficios",
+          "bullets": ["punto 1", "punto 2"]
+        },
+        "verdict": "Explicación técnica"
+      }`;
 
     const result = await this.model.generateContent(prompt);
     return JSON.parse(result.response.text());

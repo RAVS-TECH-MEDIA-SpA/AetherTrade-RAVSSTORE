@@ -1,41 +1,60 @@
-import crypto from 'crypto';
-import phpSerialize from 'php-serialize'; // Paddle usa firmas estilo PHP
+import { Router } from 'express';
+import { Pool } from 'pg'; // Reutilizando tu conexión a base de datos
 
-export const verifyPaddleSignature = (postData: any) => {
-  const signature = postData.p_signature;
-  const keys = Object.keys(postData).sort();
-  const data: any = {};
+const router = Router();
+const pool = new Pool({ /* config desde tu .env */ });
+
+/**
+ * GET /api/winners
+ * Lista los productos que Gemini marcó como ganadores.
+ */
+router.get('/winners', async (req, res) => {
+  const { country } = req.query; // Filtro opcional: ES o CL
   
-  keys.forEach(key => {
-    if (key !== 'p_signature') data[key] = postData[key];
-  });
-
-  const serialized = phpSerialize.serialize(data);
-  const verifier = crypto.createVerify('sha1');
-  verifier.update(serialized);
-  verifier.end();
-
-  return verifier.verify(process.env.PADDLE_PUBLIC_KEY!, signature, 'base64');
-};
-
-// En tu Express app
-app.post('/webhook/paddle', async (req, res) => {
-  if (!verifyPaddleSignature(req.body)) {
-    return res.status(401).send('Invalid Signature');
-  }
-
-  const { alert_name, passthrough, email } = req.body;
-
-  if (alert_name === 'payment_succeeded') {
-    const { sku } = JSON.parse(passthrough);
+  try {
+    let query = `
+      SELECT id, item_id, title_original, base_cost_usd, 
+             suggested_price_local, net_margin_usd, roi_percent, 
+             status, target_country, marketing_copy, ai_verdict
+      FROM products 
+      WHERE status = 'WINNER'
+    `;
     
-    // Disparamos el evento de Pub/Sub para el fulfillment automático
-    await pubsub.topic('order-finalized').publish(Buffer.from(JSON.stringify({
-      sku,
-      email,
-      market: req.body.country // Paddle nos da el país automáticamente
-    })));
-  }
+    const params: any[] = [];
+    if (country) {
+      query += ` AND target_country = $1`;
+      params.push(country);
+    }
 
-  res.status(200).send('OK');
+    query += ` ORDER BY roi_percent DESC LIMIT 50`;
+
+    const result = await pool.query(query, params);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('❌ Error obteniendo winners:', error);
+    res.status(500).json({ error: 'Error interno del servidor' });
+  }
 });
+
+/**
+ * PATCH /api/products/:id/publish
+ * Cambia el estado a PUBLISHED para que aparezca en la landing de Next.js
+ */
+router.patch('/products/:id/publish', async (req, res) => {
+  const { id } = req.params;
+  
+  try {
+    const result = await pool.query(
+      `UPDATE products SET status = 'PUBLISHED', updated_at = NOW() WHERE id = $1 RETURNING *`,
+      [id]
+    );
+    
+    if (result.rowCount === 0) return res.status(404).send('Producto no encontrado');
+    
+    res.json({ message: '🚀 Producto publicado en Ravstore', product: result.rows[0] });
+  } catch (error) {
+    res.status(500).json({ error: 'Error al publicar' });
+  }
+});
+
+export default router;
