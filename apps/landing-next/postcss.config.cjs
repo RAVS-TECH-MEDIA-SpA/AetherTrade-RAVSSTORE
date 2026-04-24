@@ -1,7 +1,7 @@
-// apps/landing-next/postcss.config.js
+// apps/landing-next/postcss.config.cjs
 module.exports = {
   plugins: {
-    tailwindcss: {},
+    '@tailwindcss/postcss': {}, // <--- Cambia 'tailwindcss' por '@tailwindcss/postcss'
     autoprefixer: {},
   },
 };
