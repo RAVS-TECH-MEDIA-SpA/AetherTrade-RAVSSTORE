@@ -1,4 +1,4 @@
-// apps/landing-next/src/components/Hero.tsx
+'use client';
 import { motion } from 'framer-motion';
 import { ShoppingBag, Zap } from 'lucide-react';
 

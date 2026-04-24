@@ -1,4 +1,4 @@
-// apps/landing-next/src/components/TrustSection.tsx
+'use client';
 import { ShieldCheck, Truck, CreditCard } from 'lucide-react';
 
 export const TrustSection = () => {

@@ -1,51 +1,47 @@
-// apps/landing-next/src/app/page.tsx
 import { pool } from '@/lib/db';
 import { Hero } from '@/components/Hero';
+import { TrustSection } from '@/components/TrustSection';
 import { ProductCard } from '@/components/ProductCard';
 
-async function getProducts() {
-  const query = `
-    SELECT * FROM products 
-    WHERE status = 'WINNER' 
-    ORDER BY created_at DESC 
-    LIMIT 12
-  `;
-  const res = await pool.query(query);
-  return res.rows;
+// Esta función corre solo en el servidor
+async function getWinners() {
+  try {
+    const res = await pool.query(
+      "SELECT * FROM products WHERE status = 'WINNER' ORDER BY created_at DESC LIMIT 20"
+    );
+    return res.rows;
+  } catch (error) {
+    console.error("❌ Error fetch DB:", error);
+    return [];
+  }
 }
 
-export default async function HomePage() {
-  const products = await getProducts();
+export default async function Home() {
+  const products = await getWinners();
 
   return (
-    <div className="bg-white min-h-screen">
+    <main className="min-h-screen bg-[#020617]">
       <Hero />
+      <TrustSection />
       
-      <section className="py-16 container mx-auto px-4">
-        <div className="flex items-center justify-between mb-10">
-          <h2 className="text-3xl font-extrabold text-slate-900">
-            🔥 Tendencias Recién Detectadas
-          </h2>
-          <div className="hidden md:flex gap-4">
-            {/* Logos de pago para generar confianza inmediata */}
-            <img src="/logos/webpay.png" alt="Webpay Plus" className="h-8 grayscale opacity-70" />
-            <img src="/logos/transbank.png" alt="Transbank" className="h-8 grayscale opacity-70" />
+      <section className="container mx-auto px-6 py-20">
+        <div className="flex justify-between items-end mb-12">
+          <div>
+            <h2 className="text-3xl font-bold text-white mb-2">Tendencias de Hoy</h2>
+            <p className="text-slate-400">Productos analizados con IA listos para importar</p>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
-          {products.map((p) => (
-            <ProductCard key={p.id} product={p} />
-          ))}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+          {products.length > 0 ? (
+            products.map((p) => <ProductCard key={p.id} product={p} />)
+          ) : (
+            <div className="col-span-full py-20 text-center border border-dashed border-slate-800 rounded-3xl">
+              <p className="text-slate-500">Buscando nuevos ganadores... lanza el worker en GCP!</p>
+            </div>
+          )}
         </div>
       </section>
-
-      {/* Banner de urgencia para el comprador */}
-      <div className="bg-amber-50 border-y border-amber-100 py-4 text-center">
-        <p className="text-amber-800 font-medium">
-          🚀 ¡Ojo! Nuestra IA detectó stock limitado para estos productos. Despacho prioritario a la Región del Biobío.
-        </p>
-      </div>
-    </div>
+    </main>
   );
 }
