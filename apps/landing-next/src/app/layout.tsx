@@ -1,8 +1,12 @@
-import React from 'react';
+import type { Metadata } from "next";
+import { Inter } from "next/font/google";
+import "./globals.css"; // <--- ¡ASEGÚRATE DE QUE ESTO ESTÉ AQUÍ!
 
-export const metadata = {
-  title: 'Ravstore | Arbitraje Inteligente',
-  description: 'Próximamente: Innovación para el mercado Global',
+const inter = Inter({ subsets: ["latin"] });
+
+export const metadata: Metadata = {
+  title: "Ravstore - Tendencias con IA",
+  description: "Encuentra productos ganadores analizados por inteligencia artificial",
 };
 
 export default function RootLayout({
@@ -12,9 +16,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="es">
-      <body>
-        {children}
-      </body>
+      <body className={inter.className}>{children}</body>
     </html>
   );
 }
