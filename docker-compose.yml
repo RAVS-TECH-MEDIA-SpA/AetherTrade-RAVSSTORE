@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # 1. La Fuente de Verdad (Postgres)
   db:
@@ -16,13 +14,19 @@ services:
       - postgres_data:/var/lib/postgresql/data
     networks:
       - aether-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   # 2. Orquestador de Tráfico (Express)
   api-gateway:
     build: ./apps/api-gateway
     container_name: aether_gateway
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     environment:
       - DATABASE_URL=postgres://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_NAME}
       - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
@@ -36,11 +40,18 @@ services:
     build: ./apps/workers-ai
     container_name: aether_worker
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     environment:
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - GOOGLE_SEARCH_API_KEY=${GOOGLE_SEARCH_API_KEY}
       - GOOGLE_SEARCH_CX=${GOOGLE_SEARCH_CX}
+      - RAPID_API_KEY=${RAPID_API_KEY}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=${DB_NAME}
+      - DB_HOST=db
+      - DB_PORT=5432
     networks:
       - aether-network
 

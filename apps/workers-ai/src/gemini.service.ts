@@ -3,9 +3,11 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 export class GeminiService {
   private genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
   private model = this.genAI.getGenerativeModel({ 
-    model: "gemini-1.5-pro",
+    model: "gemini-flash-latest",
     generationConfig: { responseMimeType: "application/json" } 
   });
+
+ 
 
  async analyzeArbitrage(aliData: any, competitors: any[], targetCountry: string, taxRate: number) {
     const prompt = `

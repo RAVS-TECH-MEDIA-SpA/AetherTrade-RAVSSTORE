@@ -1,17 +1,15 @@
-# Stage 1: Build
-FROM node:20-alpine AS builder
+# apps/workers-ai/Dockerfile
+FROM node:20-slim
+
 WORKDIR /app
+
+# Instalamos dependencias
 COPY package*.json ./
-RUN npm install
+RUN npm install --production
+
+# Copiamos el código
 COPY . .
-RUN npm run build
 
-# Stage 2: Run
-FROM node:20-alpine
-WORKDIR /app
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/package*.json ./
-
-EXPOSE 3000
-CMD ["node", "dist/server.js"]
+# Comando para iniciar el worker
+# Asegúrate de que este comando inicie tanto el Discovery como el Analysis listener
+CMD ["npm", "start"]

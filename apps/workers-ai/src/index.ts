@@ -1,47 +1,59 @@
+import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
-
-// En ESM (módulos), necesitamos reconstruir __dirname para rutas relativas seguras
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// Subimos niveles: de src -> workers-ai -> apps -> raíz
-const rootEnvPath = path.resolve(__dirname, '../../../.env');
-
-const result = dotenv.config({ path: rootEnvPath });
-
-// Log de diagnóstico Senior para estar 100% seguros
-if (result.error) {
-  console.error(`❌ No se encontró el .env en la raíz: ${rootEnvPath}`);
-} else {
-  console.log(`✅ .env de la raíz cargado correctamente`);
-  console.log(`🔍 [DEBUG] Serper Key: ${process.env.SERPER_API_KEY ? 'Detectada' : 'Faltante en el archivo'}`);
-}
-
-import express from 'express';
-// Mantener las extensiones .js es correcto si usas NodeNext/ESM
 import { listenForCandidates } from './workers/analysis.worker.js'; 
 import { runDiscoveryTask } from './workers/discovery.worker.js'; 
 
+// 1. Manejo de Entorno Inteligente
+if (process.env.NODE_ENV !== 'production') {
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = path.dirname(__filename);
+  const rootEnvPath = path.resolve(__dirname, '../../../.env');
+  dotenv.config({ path: rootEnvPath });
+  console.log(`🏠 Entorno local detectado. Cargando .env desde: ${rootEnvPath}`);
+}
+
 const app = express();
+// GCP inyecta el puerto en la variable PORT. Si no existe, usamos 8080.
 const port = process.env.PORT || 8080;
 
-// Iniciamos el worker asíncrono para que escuche Pub/Sub
-listenForCandidates().catch(console.error);
-
-app.get('/health', (req, res) => res.send('Worker AI Online'));
-
-app.post('/trigger-discovery', async (req, res) => {
+/**
+ * 2. Inicialización Silenciosa
+ * No bloqueamos el arranque del servidor por los workers.
+ * Cloud Run necesita que el puerto responda en < 10 segundos.
+ */
+const startWorkers = async () => {
   try {
-    await runDiscoveryTask();
-    res.send('Discovery triggered');
-  } catch (error) {
-    console.error('Error en trigger:', error);
-    res.status(500).send('Error triggering discovery');
+    await listenForCandidates();
+    console.log('📡 AnalysisWorker: Suscripción activa.');
+  } catch (err) {
+    console.error('❌ Error iniciando AnalysisWorker:', err);
+    // En prod, quizás no quieres que el proceso muera, solo loguear.
   }
+};
+
+// 3. Rutas
+app.get('/health', (req, res) => {
+  // Reportamos que el proceso está vivo inmediatamente
+  res.status(200).send('Worker AI Online');
 });
 
-app.listen(port, () => {
-  console.log(`🚀 Workers-AI escuchando en puerto ${port}`);
+app.post('/trigger-discovery', (req, res) => {
+  console.log('🚀 Trigger manual recibido.');
+  // Lo ejecutamos en background para no dejar colgada la petición HTTP
+  runDiscoveryTask().catch(err => console.error('Error en Discovery:', err));
+  res.status(202).send({ message: 'Discovery process started in background' });
+});
+
+/**
+ * 4. El "Contrato de Cloud Run"
+ * Escuchamos en '0.0.0.0' para que el tráfico externo pueda entrar al contenedor.
+ */
+app.listen(Number(port), '0.0.0.0', () => {
+  console.log(`🚀 Ravstore Engine operando en puerto ${port}`);
+  console.log(`🌍 Entorno: ${process.env.NODE_ENV || 'development'}`);
+  
+  // Iniciamos los workers después de que el puerto ya está abierto
+  startWorkers();
 });

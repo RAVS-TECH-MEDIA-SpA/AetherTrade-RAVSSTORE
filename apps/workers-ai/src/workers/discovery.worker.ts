@@ -5,35 +5,13 @@ import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import { TrendService } from '../services/trend.service.js';
 import { AliExpressService } from '../aliexpress.service.js';
-import { FilterService } from '../services/filter.service.js';
 
-// 1. Configuración de Mercados Globales (Tier 1)
-const TARGET_MARKETS = [
-  { code: 'CL', name: 'Chile' },
-  { code: 'ES', name: 'España' },
-  { code: 'DE', name: 'Alemania' },
-  { code: 'UK', name: 'Reino Unido' },
-  { code: 'IT', name: 'Italia' },
-  { code: 'FR', name: 'Francia' },
-  { code: 'US', name: 'Estados Unidos' }
-];
-
-
-// 1. Reconstrucción de la ruta (4 niveles arriba desde src/workers/)
+// 1. Configuración de Entorno y Rutas
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rootEnvPath = path.resolve(__dirname, '../../../../.env');
-
-// 2. Carga forzada antes de inicializar la Pool
 dotenv.config({ path: rootEnvPath });
 
-// [DEBUG] Para tu tranquilidad, veamos si ahora sí los ve
-console.log('--- [DB Debug] ---');
-console.log('DB_HOST:', process.env.DB_HOST || '❌ No detectado');
-console.log('DB_USER:', process.env.DB_USER || '❌ No detectado');
-console.log('------------------');
-
-// 3. Ahora la Pool ya tendrá los datos
 const pool = new Pool({
   user: process.env.DB_USER,
   host: process.env.DB_HOST,
@@ -46,8 +24,23 @@ const pubsub = new PubSub();
 const trendService = new TrendService();
 const aliService = new AliExpressService();
 
-// Helper para evitar el baneo de APIs (Rate Limiting)
+const TARGET_MARKETS = [
+  { code: 'CL', name: 'Chile' },
+  { code: 'ES', name: 'España' },
+  { code: 'US', name: 'Estados Unidos' }
+];
+
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+/**
+ * Filtros de Negocio (Ajustables)
+ */
+const FILTERS = {
+  MIN_PRICE: 5.0,
+  MAX_PRICE: 50.0,
+  MIN_RATING: 4.0,
+  MIN_SALES: 10
+};
 
 export async function runDiscoveryTask() {
   console.log('🚀 Iniciando Ciclo de Descubrimiento Global...');
@@ -57,23 +50,27 @@ export async function runDiscoveryTask() {
     console.log(`\n🌍 Mercado Actual: ${name} [${code}]`);
 
     try {
-      // 2. Gemini genera nichos inteligentes para este país específico
+      // 2. IA genera nichos (Capa de Inteligencia con Caché)
       const dynamicNiches = await trendService.getDynamicNiches(code);
       console.log(`💡 IA sugirió ${dynamicNiches.length} nichos para ${name}`);
 
       for (const niche of dynamicNiches) {
-        console.log(`🔎 Buscando "${niche}" en AliExpress (${code})...`);
+        console.log(`🔎 Buscando "${niche}" en AliExpress...`);
         
-        // Obtenemos productos reales con stock y precio
+        // 3. AliExpress API (Capa de Discovery Global)
         const items = await aliService.searchTrending(niche, code);
-        console.log(`📦 AliExpress devolvió ${items.length} productos para el nicho "${niche}"`); 
 
         for (const item of items) {
-          // 3. Aplicar filtros de calidad (evitar productos sin reviews o mala descripción)
-          if (FilterService.isProductTrash(item)) continue;
+          // Desestructuración basada en el nuevo mapeo del AliExpressService
+          const { aliexpress_id, title, price, rating, sales } = item;
+
+          // Filtro preventivo de calidad/negocio
+          if (price < FILTERS.MIN_PRICE || price > FILTERS.MAX_PRICE || rating < FILTERS.MIN_RATING) {
+            continue;
+          }
 
           try {
-            // 4. Persistencia en DB como Candidato
+            // 4. Persistencia con ajuste de ON CONFLICT
             const query = `
               INSERT INTO products (
                 aliexpress_id, 
@@ -91,19 +88,21 @@ export async function runDiscoveryTask() {
             `;
             
             const res = await pool.query(query, [
-              item.item_id,
-              item.title,
-              parseFloat(item.price?.value || "0"),
-              parseFloat(item.evaluate_rate || "0"),
-              parseInt(item.sales_count || "0"),
+              aliexpress_id,
+              title,
+              price,
+              rating,
+              sales,
               code
             ]);
 
-            // 5. Notificar al AnalysisWorker vía Pub/Sub solo si el producto es nuevo
+            // 5. Reintegración de Pub/Sub: Solo si el INSERT fue exitoso (res.rows.length > 0)
             if (res.rows.length > 0) {
+              const dbId = res.rows[0].id;
+              
               const message = JSON.stringify({
-                dbId: res.rows[0].id,
-                itemId: item.item_id,
+                dbId: dbId,
+                itemId: aliexpress_id,
                 targetCountry: code
               });
 
@@ -111,24 +110,21 @@ export async function runDiscoveryTask() {
                 data: Buffer.from(message) 
               });
               
-              console.log(`✅ Candidato guardado: [${item.item_id}] para ${code}`);
+              console.log(`✅ Candidato guardado y enviado a análisis: [${aliexpress_id}] para ${code}`);
             }
-          } catch (err) {
-            console.error(`❌ Error persistiendo producto ${item.item_id}:`, err);
+          } catch (err: any) {
+            console.error(`❌ Error persistiendo producto ${aliexpress_id}:`, err.message);
           }
         }
-
-        // Delay preventivo entre nichos para no saturar RapidAPI
-        await sleep(2000); 
+        await sleep(2000); // Rate limit preventivo
       }
       
-      // Delay preventivo entre países para refrescar cuotas
-      console.log(`🏁 Finalizado descubrimiento en ${name}. Esperando siguiente mercado...`);
+      console.log(`🏁 Finalizado descubrimiento en ${name}.`);
       await sleep(5000);
 
     } catch (error: any) {
       console.error(`⚠️ Error procesando mercado ${name}:`, error.message);
-      continue; // Si falla un país, seguimos con el siguiente
+      continue;
     }
   }
 

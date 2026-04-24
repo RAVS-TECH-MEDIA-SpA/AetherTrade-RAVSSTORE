@@ -1,83 +1,81 @@
-import axios from 'axios';
+// apps/workers-ai/src/services/aliexpress.service.ts
 
+import axios from 'axios';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import dotenv from 'dotenv';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+dotenv.config({ path: path.resolve(__dirname, '../../../../.env') });
 
 export class AliExpressService {
-  private readonly apiKey = process.env.RAPID_API_KEY;
+  private apiKey: string;
   private readonly host = 'aliexpress-datahub.p.rapidapi.com';
 
-  /**
-   * Busca productos tendencia con filtros estrictos de calidad y logística.
-   */
-  // async searchTrending(category: string, country: string) {
-  //   // Reglas de negocio por región
-  //   const isChile = country === 'CL';
-  //   const currency = isChile ? 'CLP' : 'EUR';
-  //   const deliveryDays = isChile ? '15' : '7'; // Ajuste realista para Chile
-
-  //   const options = {
-  //     method: 'GET',
-  //     url: `https://${this.host}/item_search`,
-  //     params: {
-  //       q: category,
-  //       page: '1',
-  //       sort: 'total_sales',      // Priorizar volumen de ventas
-  //       min_price: '5',           // Evitar productos de muy baja calidad
-  //       max_price: '50',          // Límite para compra por impulso
-  //       delivery_days: deliveryDays,
-  //       region: country,          // 'CL' o 'ES'
-  //       currency: currency,
-  //       locale: 'es_ES'           // Para que los títulos vengan más limpios
-  //     },
-  //     headers: {
-  //       'X-RapidAPI-Key': this.apiKey,
-  //       'X-RapidAPI-Host': this.host
-  //     }
-  //   };
-
-  //   try {
-  //     console.log(`📡 Llamando a RapidAPI para [${category}] en ${country}...`);
-  //     const response = await axios.request(options);
-      
-  //     // La API de Datahub estructura los resultados en result.item
-  //     return response.data?.result?.item || [];
-  //   } catch (error: any) {
-  //     console.error(`❌ Error en RapidAPI (AliExpress):`, error.response?.data || error.message);
-  //     return []; // Devolvemos array vacío para no romper el flujo del worker
-  //   }
-  // }
+  constructor() {
+    this.apiKey = process.env.RAPID_API_KEY || '';
+  }
 
   async searchTrending(niche: string, country: string) {
-  try {
-    const options = {
-      method: 'GET',
-      url: 'https://aliexpress-datahub.p.rapidapi.com/item_search',
-      params: {
-        q: niche,
-        page: '1',
-        region: country, // Asegúrate de que esto sea CL, ES, etc.
-        sort: 'total_sales'
-      },
-      headers: {
-        'X-RapidAPI-Key': process.env.RAPID_API_KEY,
-        'X-RapidAPI-Host': 'aliexpress-datahub.p.rapidapi.com'
-      }
-    };
+    if (!this.apiKey) {
+      console.error('❌ AliExpressService: RAPID_API_KEY no encontrada.');
+      return [];
+    }
 
-    const response = await axios.request(options);
-    
-    // 🔍 LOG DE DIAGNÓSTICO SENIOR
-    console.log(`DEBUG RapidAPI [${niche}]:`, {
-      status: response.status,
-      totalResult: response.data?.total_result || 0,
-      hasData: !!response.data?.result?.item
-    });
+    try {
+      const options = {
+        method: 'GET',
+        url: `https://${this.host}/item_search_3`,
+        params: {
+          q: niche,
+          page: '1',
+          region: 'US', // Discovery Global
+          sort: 'default',
+          locale: 'en_US',
+          currency: 'USD'
+        },
+        headers: {
+          'x-rapidapi-key': this.apiKey,
+          'x-rapidapi-host': this.host
+        }
+      };
 
-    // OJO AQUÍ: Verifica si tu API usa .result.item o .data.items
-    return response.data?.result?.item || []; 
+      const response = await axios.request(options);
+      
+      // 1. Extraer la lista real (en V3 es resultList)
+      const rawItems = response.data?.result.resultList || [];
+      const totalResults = response.data?.result.resultList.length || 0;
 
-  } catch (error: any) {
-    console.error('❌ Error en AliExpress Service:', error.message);
-    return [];
+      // 2. Mapeo Quirúrgico
+      const mappedItems = rawItems.map((entry: any) => {
+        const item = entry.item;
+        const delivery = entry.delivery;
+
+        return {
+          aliexpress_id: item.itemId,
+          title: item.title,
+          // Prioridad: promotionPrice > price > 0
+          price: parseFloat(item.sku?.def?.promotionPrice || item.sku?.def?.price || '0'),
+          // Manejo de envío
+          shipping_fee: delivery ? (delivery.freeShipping ? 0 : parseFloat(delivery.shippingFee || '0')) : 0,
+          // El rating a veces es null en productos nuevos
+          rating: item.averageStarRate ? parseFloat(item.averageStarRate) : 0,
+          sales: item.sales || 0,
+          // Limpiar la URL (añadir https:)
+          url: item.itemUrl.startsWith('http') ? item.itemUrl : `https:${item.itemUrl}`,
+          image: item.image.startsWith('http') ? item.image : `https:${item.image}`
+        };
+      });
+
+      console.log(`\n🔎 [AliExpress API] Nicho: "${niche}"`);
+      console.log(`📊 Encontrados: ${totalResults} | Mapeados con éxito: ${mappedItems.length}`);
+
+      return mappedItems;
+
+    } catch (error: any) {
+      console.error(`❌ Error en RapidAPI [${niche}]:`, error.response?.data || error.message);
+      return []; 
+    }
   }
-}
 }

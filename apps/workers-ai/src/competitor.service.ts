@@ -1,6 +1,6 @@
-import { AliExpressService } from './aliexpress.service';
-import { ScraperService } from './services/scraper.service';
-import { GeminiService } from './gemini.service';
+import { AliExpressService } from './aliexpress.service.js';
+import { ScraperService } from './services/scraper.service.js';
+import { GeminiService } from './gemini.service.js';
 
 export class CompetitorService {
   constructor(
