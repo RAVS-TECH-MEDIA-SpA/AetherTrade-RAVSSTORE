@@ -1,45 +1,50 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 export class GeminiService {
+  // Usamos el modelo más eficiente para el Free Tier
   private genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
   private model = this.genAI.getGenerativeModel({ 
-    model: "gemini-flash-latest",
+    model: "gemini-3-flash-preview",
     generationConfig: { responseMimeType: "application/json" } 
   });
 
- 
-
- async analyzeArbitrage(aliData: any, competitors: any[], targetCountry: string, taxRate: number) {
+  async analyzeArbitrage(aliData: any, competitors: any[], targetCountry: string, taxRate: number) {
     const prompt = `
-      Actúa como experto en E-commerce y Pricing Strategist para el mercado de ${targetCountry}.
+      Actúa como experto en E-commerce para el mercado de ${targetCountry}.
       
-      PRODUCTO ALI: ${aliData.title} | Costo: ${aliData.price} USD | Envío: ${aliData.shipping} USD
+      PRODUCTO: ${aliData.title}
+      COSTO: ${aliData.price} USD | ENVÍO: ${aliData.shipping} USD
       COMPETENCIA: ${JSON.stringify(competitors)}
 
-      REGLAS FISCALES Y DE NEGOCIO:
-      1. IVA (Tax): ${taxRate}% (Ya incluido en el precio final de venta).
-      2. Moneda de Destino: ${targetCountry === 'CL' ? 'CLP' : 'EUR'}.
-      3. Comisión Pasarela: 1.50 USD fijos + 2.9%.
-      
+      REGLAS:
+      1. IVA: ${taxRate}% (Ya incluido en PVP final).
+      2. COMISIÓN PASARELA: 2.9% + 0.30 USD.
+      3. MARGEN NETO: (PVP / (1 + ${taxRate}/100)) - (Costo + Envío) - Comisiones.
+
       OBJETIVO:
-      - Calcula el Margen Neto: (Precio Venta / (1 + ${taxRate}/100)) - (Costo + Envío) - Comisiones.
-      - Genera Marketing Copy en el idioma local de ${targetCountry} (Usa modismos locales si es necesario, ej. Chile vs España).
+      - Determina si es un Winner (Margen Neto > 20%).
+      - Genera Marketing Copy persuasivo en el idioma de ${targetCountry}.
       
-      DEVUELVE JSON:
+      RESPONDE SOLO JSON:
       {
         "isWinner": boolean,
         "suggestedPriceLocal": number,
         "netMarginUsd": number,
         "roiPercent": number,
         "marketingCopy": {
-          "headline": "Título persuasivo",
-          "description": "Descripción larga con beneficios",
+          "headline": "título",
+          "description": "beneficios",
           "bullets": ["punto 1", "punto 2"]
         },
-        "verdict": "Explicación técnica"
+        "verdict": "explicación breve"
       }`;
 
-    const result = await this.model.generateContent(prompt);
-    return JSON.parse(result.response.text());
+    try {
+      const result = await this.model.generateContent(prompt);
+      return JSON.parse(result.response.text());
+    } catch (error) {
+      console.error("❌ Error parseando respuesta de Gemini:", error);
+      throw error;
+    }
   }
 }

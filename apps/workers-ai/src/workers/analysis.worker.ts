@@ -3,16 +3,19 @@ import { Pool } from 'pg';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
+
+// Servicios
 import { ScraperService } from '../services/scraper.service.js';
 import { GeminiService } from '../gemini.service.js';
+import { AliExpressService } from '../aliexpress.service.js';
+import { SerperService } from '../services/serper.service.js';
+import { MediaService } from '../services/media.services.js';
 
-// 1. CARGA DE ENTORNO (Prioridad absoluta)
+// Configuración de entorno
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const rootEnvPath = path.resolve(__dirname, '../../../../.env');
-dotenv.config({ path: rootEnvPath });
+dotenv.config({ path: path.resolve(__dirname, '../../../../.env') });
 
-// 2. CONFIGURACIÓN DEL POOL
 const pool = new Pool({
   user: process.env.DB_USER,
   host: process.env.DB_HOST,
@@ -21,108 +24,119 @@ const pool = new Pool({
   port: parseInt(process.env.DB_PORT || '5432'),
 });
 
-const pubsub = new PubSub();
+const pubsub = new PubSub({
+  keyFilename: path.resolve(__dirname, '../../../../key.json')
+});
+
 const scraper = new ScraperService();
 const gemini = new GeminiService();
+const aliService = new AliExpressService();
+const serper = new SerperService();
+const media = new MediaService();
 
-// Helper para respetar los límites de la API de Gemini (Rate Limiting)
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 export async function listenForCandidates() {
-  /**
-   * 🚀 AJUSTE SENIOR: Flow Control
-   * maxMessages: 1 obliga al worker a procesar de a uno.
-   * Esto, sumado al sleep, evita el error 429 (Too Many Requests).
-   */
   const subscription = pubsub.subscription('candidate-analysis-sub', {
-    flowControl: {
-      maxMessages: 1
-    }
+    flowControl: { maxMessages: 1 }
   });
-  
-  console.log('📡 AnalysisWorker: Escuchando mensajes de Pub/Sub...');
+
+  console.log('📡 AnalysisWorker: Escuchando flujo de candidatos...');
 
   subscription.on('message', async (message) => {
-    const data = JSON.parse(message.data.toString());
-    const { dbId, itemId, targetCountry } = data;
+    const { dbId, itemId, targetCountry } = JSON.parse(message.data.toString());
     
     try {
-      console.log(`🔍 Analizando: ${itemId} (${targetCountry})...`);
-
-      // 1. Obtener datos técnicos y fiscales
+      // 1. Obtener reglas fiscales
       const dbRes = await pool.query(`
-        SELECT p.*, t.vat_rate, t.currency_code 
-        FROM products p 
+        SELECT p.*, t.vat_rate FROM products p 
         JOIN tax_rules t ON p.target_country = t.country_code 
         WHERE p.id = $1`, [dbId]);
 
-      if (dbRes.rows.length === 0) {
-        message.ack();
-        return;
+      if (dbRes.rows.length === 0) return message.ack();
+      const vatRate = parseFloat(dbRes.rows[0].vat_rate || "0");
+
+      // 2. Detalle del producto (AliExpress)
+      const detail = await aliService.getItemDetail(itemId);
+
+      if (!detail || !detail.available || detail.stock < 15) {
+        console.log(`🗑️ [RECHAZADO] ${itemId}: Stock insuficiente.`);
+        await pool.query('UPDATE products SET status = $1, updated_at = NOW() WHERE id = $2', ['REJECTED_STOCK', dbId]);
+        return message.ack();
       }
 
-      const product = dbRes.rows[0];
+      // --- FILTRO DE ENVÍO GRATIS SENIOR ---
+      const isFreeShipping = detail.shippingFee === 0 || detail.shippingFee === null;
+      if (!isFreeShipping) {
+        console.log(`🗑️ [RECHAZADO] ${itemId}: No tiene envío gratis (${detail.shippingFee}).`);
+        await pool.query('UPDATE products SET status = $1, updated_at = NOW() WHERE id = $2', ['REJECTED_SHIPPING', dbId]);
+        return message.ack();
+      }
 
-      // 2. Scrapping de competencia (Serper)
-      const marketResults = await scraper.getCompetitorPrices(product.title_original, targetCountry);
+      // 3. Precios de competencia (Scraping)
+      const marketResults = await scraper.getCompetitorPrices(detail.title, targetCountry);
 
-      // 3. IA: Cálculo de rentabilidad y Veredicto
+      // 4. Análisis de IA (Gemini)
       const analysis = await gemini.analyzeArbitrage(
-        { 
-          title: product.title_original, 
-          price: parseFloat(product.base_cost_usd), 
-          shipping: parseFloat(product.shipping_cost_usd || "0") 
-        },
+        { title: detail.title, price: detail.price, shipping: detail.shippingFee },
         marketResults,
         targetCountry,
-        parseFloat(product.vat_rate || "0")
+        vatRate
       );
 
-      // 4. Update Final en DB
+      // 5. Enriquecimiento Multimedia (Solo Winners)
+      let serperImages: string[] = [];
+      let localImages: string[] = [];
+
+      if (analysis.isWinner) {
+        console.log(`🔥 Winner detectado! Descargando multimedia...`);
+        
+        // A. Fotos de Google (Lifestyle)
+        serperImages = await serper.getLifestyleImages(analysis.marketingCopy.headline);
+
+        // B. Backup a GCS (Santiago)
+        if (detail.images && detail.images.length > 0) {
+          localImages = await Promise.all(
+            detail.images.slice(0, 5).map((url: string, i: number) => 
+              media.downloadAndUploadImage(url, dbId, i)
+            )
+          );
+        }
+      }
+
+      // 6. Persistencia Final Integrada
       const updateQuery = `
         UPDATE products SET 
-          status = $1,
-          suggested_price_local = $2,
-          net_margin_usd = $3,
-          roi_percent = $4,
-          marketing_copy = $5,
-          ai_verdict = $6,
-          competitor_data = $7,
-          updated_at = NOW()
-        WHERE id = $8;
+          status = $1, suggested_price_local = $2, net_margin_usd = $3, roi_percent = $4,
+          marketing_copy = $5, ai_verdict = $6, competitor_data = $7, 
+          stock_quantity = $8, serper_images = $9, local_images = $10,
+          is_free_shipping = $11, updated_at = NOW()
+        WHERE id = $12;
       `;
 
       await pool.query(updateQuery, [
-        analysis.isWinner ? 'WINNER' : 'REJECTED',
+        analysis.isWinner ? 'WINNER' : 'REJECTED_IA',
         analysis.suggestedPriceLocal,
         analysis.netMarginUsd,
         analysis.roiPercent,
         JSON.stringify(analysis.marketingCopy),
         analysis.verdict,
         JSON.stringify(marketResults),
+        detail.stock,
+        JSON.stringify(serperImages),
+        JSON.stringify(localImages),
+        isFreeShipping,
         dbId
       ]);
 
-      console.log(`✅ [${targetCountry}] ${itemId}: ${analysis.isWinner ? 'WINNER 🔥' : 'REJECTED ❌'}`);
+      console.log(`✅ [${targetCountry}] Finalizado: ${analysis.isWinner ? 'WINNER 🔥' : 'REJECTED'}`);
       
-      // Confirmamos éxito a la nube
       message.ack();
-
-      /**
-       * ⏳ PAUSA DE SEGURIDAD
-       * Esperamos 4 segundos antes de que 'flowControl' permita el siguiente mensaje.
-       * Esto nos mantiene dentro de la cuota gratuita/estándar de Gemini.
-       */
-      await sleep(4000);
+      await sleep(15000); 
 
     } catch (error: any) {
-      if (error.message.includes('429')) {
-        console.warn(`⚠️ Cuota Gemini excedida para ${itemId}. Reintentando...`);
-        message.nack(); // Devuelve el mensaje a la cola para intentar más tarde
-      } else {
-        console.error(`❌ Error crítico en ${itemId}:`, error.message);
-        message.ack(); // Lo quitamos de la cola si es un error de código para no buclear
-      }
+      console.error(`❌ Error en ${itemId}:`, error.message);
+      message.nack(); 
     }
   });
 }

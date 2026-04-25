@@ -17,6 +17,7 @@ if (process.env.NODE_ENV !== 'production') {
 const app = express();
 // GCP inyecta el puerto en la variable PORT. Si no existe, usamos 8080.
 const port = process.env.PORT || 8080;
+const host = '0.0.0.0'; // DEBE SER ASÍ
 
 /**
  * 2. Inicialización Silenciosa

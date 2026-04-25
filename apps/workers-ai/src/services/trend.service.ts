@@ -34,7 +34,7 @@ export class TrendService {
       // Mantenemos Flash 2.5 por velocidad y costo
     //   this.model = this.genAI.getGenerativeModel({ model: "gemini-flash-latest" });
     this.model = this.genAI.getGenerativeModel({ 
-        model: "gemini-flash-latest", // O "gemini-2.0-flash" si ya tienes acceso estable
+        model: "gemini-3-flash-preview", // O "gemini-2.0-flash" si ya tienes acceso estable
         generationConfig: {
             responseMimeType: "application/json", // Crucial para tu flujo de análisis
         }
