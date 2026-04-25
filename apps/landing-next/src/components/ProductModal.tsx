@@ -10,7 +10,7 @@ export default function ProductModal({ productId, onClose }: { productId: string
 
   useEffect(() => {
     setLoading(true);
-    fetch(`/api/products/${productId}`)
+    fetch(`https://ravstore-monorepo.vercel.app/api/products/${productId}`)
       .then(res => {
         if (!res.ok) throw new Error('No se pudo cargar el producto');
         return res.json();

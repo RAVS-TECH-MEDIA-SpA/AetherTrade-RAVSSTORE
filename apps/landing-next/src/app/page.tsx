@@ -1,35 +1,56 @@
+// apps/landing-next/src/app/page.tsx
+
+export const revalidate = 30; // Revalida los datos cada 1 minuto
 import { cookies } from 'next/headers';
-import Navbar from '@/components/Navbar';        // Sin llaves { }
-import Footer from '@/components/Footer';        // Sin llaves { }
-import TrustSection from '@/components/TrustSection'; // Sin llaves { }
+import { pool } from '@/lib/db'; // Importamos el pool de conexión directa
+import Navbar from '@/components/Navbar';
+import Footer from '@/components/Footer';
+import TrustSection from '@/components/TrustSection';
 import ProductGridClient from '@/components/ProductGridClient';
 
+// Configuración visual por país
 const countryConfigs: Record<string, { name: string; flag: string; accent: string }> = {
-  CL: { name: 'Chile', flag: 'cl', accent: 'from-blue-500 to-red-500' },
-  US: { name: 'USA', flag: 'us', accent: 'from-blue-600 to-red-600' },
-  CA: { name: 'Canadá', flag: 'ca', accent: 'from-red-500 to-red-700' },
-  ES: { name: 'España', flag: 'es', accent: 'from-yellow-500 to-red-500' }
+  CL: { name: 'Chile', flag: '🇨🇱', accent: 'from-blue-500 to-red-500' },
+  US: { name: 'USA', flag: '🇺🇸', accent: 'from-blue-600 to-red-600' },
+  CA: { name: 'Canadá', flag: '🇨🇦', accent: 'from-red-500 to-red-700' },
+  ES: { name: 'España', flag: '🇪🇸', accent: 'from-yellow-500 to-red-500' }
 };
 
+/**
+ * Lógica de Servidor: Consulta directa a la DB
+ */
+async function getWinners(countryCode: string) {
+  try {
+    const query = `
+      SELECT id, title_original, marketing_copy, suggested_price_local, local_images, target_country 
+      FROM products 
+      WHERE status = 'WINNER' AND target_country = $1 
+      ORDER BY updated_at DESC
+    `;
+    
+    let res = await pool.query(query, [countryCode]);
+
+    // Fallback: Si no hay productos para el país detectado, mostramos los de Chile por defecto
+    if (res.rows.length === 0 && countryCode !== 'CL') {
+      console.log(`⚠️ No hay productos para ${countryCode}, cargando fallback CL...`);
+      res = await pool.query(query, ['CL']);
+    }
+
+    return res.rows;
+  } catch (error) {
+    console.error("❌ Error directo de DB en Page:", error);
+    return [];
+  }
+}
+
 export default async function HomePage() {
+  // 1. Obtener contexto del usuario (Next.js 15 requiere await en cookies)
   const cookieStore = await cookies();
   const countryCode = (cookieStore.get('user-country')?.value || 'CL').toUpperCase();
   const config = countryConfigs[countryCode] || countryConfigs.CL;
 
-  const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
-  
-  let products = [];
-  try {
-    const res = await fetch(`${baseUrl}/api/products?country=${countryCode}`, { cache: 'no-store' });
-    if (res.ok) products = await res.json();
-    
-    if (products.length === 0 && countryCode !== 'CL') {
-      const backup = await fetch(`${baseUrl}/api/products?country=CL`, { cache: 'no-store' });
-      if (backup.ok) products = await backup.json();
-    }
-  } catch (e) {
-    console.error("❌ Error de red en Landing:", e);
-  }
+  // 2. Obtener datos directamente de Postgres (Sin fetch intermedio)
+  const products = await getWinners(countryCode);
 
   return (
     <div className="min-h-screen bg-[#020617] text-white selection:bg-violet-500/30">
@@ -37,7 +58,7 @@ export default async function HomePage() {
       <Navbar countryCode={countryCode} />
 
       <main>
-        {/* 2. Hero Dinámico (Inyectado directamente para máxima velocidad) */}
+        {/* 2. Hero Dinámico */}
         <section className="relative pt-40 pb-24 px-6 text-center overflow-hidden">
           <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-[600px] bg-violet-600/10 blur-[120px] rounded-full pointer-events-none" />
           
@@ -62,7 +83,7 @@ export default async function HomePage() {
           </div>
         </section>
 
-        {/* 3. Sección de Confianza (Garantías, envíos, etc.) */}
+        {/* 3. Sección de Confianza */}
         <TrustSection countryCode={countryCode} />
 
         {/* 4. Grid de Productos */}
