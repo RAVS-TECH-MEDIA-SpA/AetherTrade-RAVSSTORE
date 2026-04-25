@@ -34,7 +34,7 @@ export default async function HomePage() {
   return (
     <div className="min-h-screen bg-[#020617] text-white selection:bg-violet-500/30">
       {/* 1. Barra de Navegación */}
-      <Navbar />
+      <Navbar countryCode={countryCode} />
 
       <main>
         {/* 2. Hero Dinámico (Inyectado directamente para máxima velocidad) */}
