@@ -1,15 +1,41 @@
-# apps/workers-ai/Dockerfile
-FROM node:20-slim
+# 1. ETAPA DE CONSTRUCCIÓN (Build)
+FROM node:20-slim AS builder
 
 WORKDIR /app
 
-# Instalamos dependencias
+# Instalamos dependencias de sistema necesarias para compilar módulos si hiciera falta
+RUN apt-get update && apt-get install -y python3 make g++ && rm -rf /var/lib/apt/lists/*
+
 COPY package*.json ./
-RUN npm install --production
+# Instalamos TODO (incluyendo devDependencies para el build)
+RUN npm install
 
-# Copiamos el código
 COPY . .
+# Si usas TypeScript o necesitas compilar, descomenta la siguiente línea:
+# RUN npm run build
 
-# Comando para iniciar el worker
-# Asegúrate de que este comando inicie tanto el Discovery como el Analysis listener
+# 2. ETAPA DE EJECUCIÓN (Production Runner)
+FROM node:20-slim AS runner
+
+WORKDIR /app
+
+# Definimos el entorno como producción
+ENV NODE_ENV=production
+
+# Copiamos solo los archivos necesarios de la etapa anterior
+COPY --from=builder /app/package*.json ./
+# Instalamos solo las dependencias de producción (omite devDependencies)
+RUN npm install --omit=dev
+
+# Copiamos el código compilado (o el código fuente si es JS plano)
+COPY --from=builder /app ./
+
+# Por seguridad: No correr como root
+USER node
+
+# Cloud Run requiere que el contenedor escuche en un puerto (8080)
+EXPOSE 8080
+ENV PORT 8080
+
+# Comando para iniciar el worker (Discovery + Analysis)
 CMD ["npm", "start"]
