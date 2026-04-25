@@ -1,8 +1,8 @@
 import { cookies } from 'next/headers';
-import { Navbar } from '@/components/Navbar';
-import { Footer } from '@/components/Footer';
-import { TrustSection } from '@/components/TrustSection';
-import ProductGridClient from '@/components/ProductGridClient'; // Este suele ser default
+import Navbar from '@/components/Navbar';        // Sin llaves { }
+import Footer from '@/components/Footer';        // Sin llaves { }
+import TrustSection from '@/components/TrustSection'; // Sin llaves { }
+import ProductGridClient from '@/components/ProductGridClient';
 
 const countryConfigs: Record<string, { name: string; flag: string; accent: string }> = {
   CL: { name: 'Chile', flag: '🇨🇱', accent: 'from-blue-500 to-red-500' },

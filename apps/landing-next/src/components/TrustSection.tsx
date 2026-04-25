@@ -1,34 +1,42 @@
-'use client';
 import { ShieldCheck, Truck, CreditCard } from 'lucide-react';
 
-export const TrustSection = () => {
+interface TrustSectionProps {
+  countryCode: string;
+}
+
+export default function TrustSection({ countryCode }: TrustSectionProps) {
+  const content = {
+    CL: { shipping: 'Envío a Todo Chile', region: 'Entregas rápidas en Biobío y regiones.' },
+    CA: { shipping: 'Canada Wide Shipping', region: 'Fast delivery from Toronto to Vancouver.' },
+    US: { shipping: 'Fast USA Shipping', region: 'Standard 3-5 day delivery nationwide.' },
+    ES: { shipping: 'Envío a Toda España', region: 'Logística optimizada para Península e Islas.' }
+  }[countryCode] || { shipping: 'Global Shipping', region: 'Fast international delivery.' };
+
   return (
-    <section className="py-20 bg-slate-950 border-t border-slate-900">
-      <div className="container mx-auto px-6">
-        <div className="grid md:grid-cols-3 gap-12 text-center">
-          <div className="flex flex-col items-center">
-            <div className="w-16 h-16 bg-violet-500/10 rounded-full flex items-center justify-center text-violet-500 mb-6">
-              <CreditCard size={32} />
-            </div>
-            <h4 className="text-xl font-bold text-white mb-3">Pago Seguro</h4>
-            <p className="text-slate-400">Paga con tus tarjetas de débito o crédito a través de <strong>Webpay Plus / Transbank</strong>.</p>
-          </div>
-          <div className="flex flex-col items-center">
-            <div className="w-16 h-16 bg-emerald-500/10 rounded-full flex items-center justify-center text-emerald-500 mb-6">
-              <Truck size={32} />
-            </div>
-            <h4 className="text-xl font-bold text-white mb-3">Envío Regional</h4>
-            <p className="text-slate-400">Despachos rápidos a todo el país. Especial atención en la <strong>Región del Biobío</strong>.</p>
-          </div>
-          <div className="flex flex-col items-center">
-            <div className="w-16 h-16 bg-blue-500/10 rounded-full flex items-center justify-center text-blue-500 mb-6">
-              <ShieldCheck size={32} />
-            </div>
-            <h4 className="text-xl font-bold text-white mb-3">Garantía Ravstore</h4>
-            <p className="text-slate-400">Todos nuestros productos son testeados antes de ser recomendados por nuestra IA.</p>
-          </div>
+    <section className="container mx-auto px-6 py-12">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="bg-slate-900/40 border border-slate-800/50 p-8 rounded-3xl backdrop-blur-sm group hover:border-violet-500/50 transition-colors">
+          <ShieldCheck className="w-10 h-10 text-violet-500 mb-4 group-hover:scale-110 transition-transform" />
+          <h4 className="font-black text-white uppercase text-sm tracking-tight mb-2">Pago 100% Seguro</h4>
+          <p className="text-slate-400 text-xs leading-relaxed">
+            Transacciones cifradas de extremo a extremo. Compra con total tranquilidad en {countryCode}.
+          </p>
+        </div>
+
+        <div className="bg-slate-900/40 border border-slate-800/50 p-8 rounded-3xl backdrop-blur-sm group hover:border-violet-500/50 transition-colors text-violet-400 shadow-2xl shadow-violet-500/5">
+          <Truck className="w-10 h-10 text-violet-500 mb-4 group-hover:scale-110 transition-transform" />
+          <h4 className="font-black text-white uppercase text-sm tracking-tight mb-2">{content.shipping}</h4>
+          <p className="text-slate-400 text-xs leading-relaxed">{content.region}</p>
+        </div>
+
+        <div className="bg-slate-900/40 border border-slate-800/50 p-8 rounded-3xl backdrop-blur-sm group hover:border-violet-500/50 transition-colors">
+          <CreditCard className="w-10 h-10 text-violet-500 mb-4 group-hover:scale-110 transition-transform" />
+          <h4 className="font-black text-white uppercase text-sm tracking-tight mb-2">Cuotas Sin Interés</h4>
+          <p className="text-slate-400 text-xs leading-relaxed">
+            Facilidades de pago con tarjetas bancarias locales procesadas por IA.
+          </p>
         </div>
       </div>
     </section>
   );
-};
+}
