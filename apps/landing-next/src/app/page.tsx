@@ -5,10 +5,10 @@ import TrustSection from '@/components/TrustSection'; // Sin llaves { }
 import ProductGridClient from '@/components/ProductGridClient';
 
 const countryConfigs: Record<string, { name: string; flag: string; accent: string }> = {
-  CL: { name: 'Chile', flag: '🇨🇱', accent: 'from-blue-500 to-red-500' },
-  US: { name: 'USA', flag: '🇺🇸', accent: 'from-blue-600 to-red-600' },
-  CA: { name: 'Canadá', flag: '🇨🇦', accent: 'from-red-500 to-red-700' },
-  ES: { name: 'España', flag: '🇪🇸', accent: 'from-yellow-500 to-red-500' }
+  CL: { name: 'Chile', flag: 'CL', accent: 'from-blue-500 to-red-500' },
+  US: { name: 'USA', flag: 'US', accent: 'from-blue-600 to-red-600' },
+  CA: { name: 'Canadá', flag: 'CA', accent: 'from-red-500 to-red-700' },
+  ES: { name: 'España', flag: 'ES', accent: 'from-yellow-500 to-red-500' }
 };
 
 export default async function HomePage() {
