@@ -1,94 +1,130 @@
 import { PubSub } from '@google-cloud/pubsub';
-import { Pool } from 'pg';
-import { Redis } from 'ioredis'; // npm install ioredis
 import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
-import { TrendService } from '../services/trend.service.js';
+import { pool } from '../lib/db.js';
+import { redis } from '../lib/redis.js'; 
 import { AliExpressService } from '../aliexpress.service.js';
+import { GeminiService } from '../gemini.service.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-dotenv.config({ path: path.resolve(__dirname, '../../../../.env') });
 
-const redis = new Redis(process.env.REDIS_URL || ''); // Configura REDIS_URL en tu .env
-const pool = new Pool({
-  user: process.env.DB_USER,
-  host: process.env.DB_HOST,
-  database: process.env.DB_NAME,
-  password: String(process.env.DB_PASSWORD || ''),
-  port: parseInt(process.env.DB_PORT || '5432'),
-});
+if (process.env.NODE_ENV !== 'production') {
+  dotenv.config({ path: path.resolve(__dirname, '../../../../.env') });
+}
 
 const pubsub = new PubSub();
-const trendService = new TrendService();
 const aliService = new AliExpressService();
-
-const TARGET_MARKETS = [
-  { code: 'CL', name: 'Chile' },
-  { code: 'ES', name: 'España' },
-  { code: 'US', name: 'Estados Unidos' },
-  { code: 'CA', name: 'Canadá' },
-  { code: 'BR', name: 'Brasil' }
-];
+const gemini = new GeminiService();
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Filtros de Negocio (Para no gastar créditos de detalle en basura)
-const FILTERS = { MIN_PRICE: 5.0, MAX_PRICE: 80.0, MIN_RATING: 4.5, MIN_SALES: 100 };
+const FILTERS = { 
+  MIN_PRICE: 3.0, 
+  MAX_PRICE: 85.0, 
+  MIN_RATING: 4.2, 
+  MIN_SALES: 50,
+  MAX_SHIPPING: 4.0 
+};
 
 export async function runDiscoveryTask() {
-  console.log('🚀 Iniciando Ciclo de Descubrimiento Global Optimizado...');
+  const ahora = new Date().toLocaleString("es-CL", { timeZone: "America/Santiago" });
+  console.log(`\n Iniciando DiscoveryWorker V1.1: ${ahora}`);
 
-  for (const market of TARGET_MARKETS) {
-    console.log(`\n🌍 Mercado: ${market.name} [${market.code}]`);
+  try {
+    const marketsRes = await pool.query(`SELECT country_code, country_name FROM tax_rules WHERE is_active = TRUE`);
 
-    try {
-      const dynamicNiches = await trendService.getDynamicNiches(market.code);
+    for (const market of marketsRes.rows) {
+      const { country_code } = market;
+      
+      const dynamicNiches = await gemini.generateDynamicNiches(country_code); 
 
       for (const niche of dynamicNiches) {
-        const items = await aliService.searchTrending(niche, market.code);
+        console.log(`Analizando nicho IA: "${niche}" en ${country_code}...`);
+        
+        await pool.query('INSERT INTO niche_cache (country_code, niche_text) VALUES ($1, $2) ON CONFLICT DO NOTHING', [country_code, niche]);
 
+        const items = await aliService.searchTrending(niche, country_code);
+        
+        // LÓGICA DE AHORRO DE CRÉDITOS: Contador de candidatos
+        let candidatesFound = 0;
+        
         for (const item of items) {
-          const { aliexpress_id, title, price, rating, sales } = item;
-
-          // 1. FILTRO REDIS: ¿Ya lo procesamos esta semana?
-          const cacheKey = `processed:${aliexpress_id}`;
-          const isCached = await redis.get(cacheKey);
-          if (isCached) continue;
-
-          // 2. FILTRO DE NEGOCIO (Discovery "Gratis")
-          if (price < FILTERS.MIN_PRICE || price > FILTERS.MAX_PRICE || rating < FILTERS.MIN_RATING || sales < FILTERS.MIN_SALES) {
-            continue;
+          
+          // Si ya validamos 10 productos, rompemos el ciclo y pasamos al siguiente nicho
+          if (candidatesFound >= 10) {
+            console.log(`Ahorro de créditos: 10 candidatos encontrados para "${niche}". Pasando al siguiente nicho.`);
+            break; 
           }
+
+          const { aliexpress_id, title, price, rating, sales, imageUrl } = item;
+          
+          const cacheKey = `proc:${country_code}:${aliexpress_id}`;
+          if (await redis.get(cacheKey)) continue;
+
+          if (price < FILTERS.MIN_PRICE || price > FILTERS.MAX_PRICE) continue;
+          if (rating < FILTERS.MIN_RATING) continue;
+          if (sales < FILTERS.MIN_SALES) continue;
 
           try {
-            const query = `
-              INSERT INTO products (aliexpress_id, title_original, base_cost_usd, rating, sales_count, status, target_country, created_at)
-              VALUES ($1, $2, $3, $4, $5, 'CANDIDATE', $6, NOW())
-              ON CONFLICT (aliexpress_id) DO NOTHING RETURNING id;
+            const detail = await aliService.getItemDetail(aliexpress_id);
+
+            const finalPrice = Number(detail?.price) || Number(price) || 0;
+            const finalShipping = Number(detail?.shippingFee) || 0;
+            const finalTitle = detail?.title || title || "Producto sin nombre";
+
+            if (finalShipping > FILTERS.MAX_SHIPPING) {
+              console.log(`Descartado ${aliexpress_id}: Envío ($${finalShipping}) supera margen.`);
+              continue; 
+            }
+            
+            let videoUrl = detail?.videoUrl || null;
+            if (!videoUrl && finalTitle !== "Producto sin nombre") {
+              videoUrl = await aliService.findProductVideo(finalTitle);
+            }
+
+            if (detail && detail.stock < 10) continue;
+
+            console.log(`Candidato Aceptado. Insertando ${aliexpress_id} a BD...`);
+            
+            // Sumamos 1 al contador de candidatos exitosos
+            candidatesFound++;
+
+            const insertQuery = `
+              INSERT INTO products (
+                aliexpress_id, title_original, image_url, video_url, target_country, 
+                base_cost_usd, shipping_cost_usd, rating, sales_count, status
+              )
+              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'PENDING')
+              ON CONFLICT (aliexpress_id, target_country) 
+              DO UPDATE SET updated_at = NOW(), sales_count = EXCLUDED.sales_count
+              RETURNING id;
             `;
             
-            const res = await pool.query(query, [aliexpress_id, title, price, rating, sales, market.code]);
+            const res = await pool.query(insertQuery, [
+              aliexpress_id, finalTitle, imageUrl, videoUrl, country_code,
+              finalPrice, finalShipping, rating, sales
+            ]);
 
             if (res.rows.length > 0) {
-              const dbId = res.rows[0].id;
-              await pubsub.topic('candidate-analysis').publishMessage({ 
-                data: Buffer.from(JSON.stringify({ dbId, itemId: aliexpress_id, targetCountry: market.code })) 
+              await pubsub.topic('candidate-analysis-2').publishMessage({ 
+                data: Buffer.from(JSON.stringify({ 
+                  dbId: res.rows[0].id, 
+                  itemId: aliexpress_id, 
+                  targetCountry: country_code 
+                })) 
               });
-              
-              // Guardar en Redis por 7 días (evita duplicar gastos de RapidAPI/IA)
               await redis.set(cacheKey, '1', 'EX', 604800);
-              console.log(`✅ [${market.code}] Candidato detectado: ${aliexpress_id}`);
             }
           } catch (err: any) {
-            console.error(`❌ Error DB:`, err.message);
+            console.error(`Error Discovery ID ${aliexpress_id}:`, err.message);
           }
+          await sleep(600);
         }
-        await sleep(2000); 
       }
-    } catch (error: any) {
-      console.error(`⚠️ Error en mercado ${market.name}:`, error.message);
     }
+  } catch (globalError: any) {
+    console.error("Error Critico Discovery:", globalError.message);
   }
 }

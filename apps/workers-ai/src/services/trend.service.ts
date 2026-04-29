@@ -1,52 +1,43 @@
 import { GoogleGenerativeAI, GenerativeModel } from "@google/generative-ai";
-import path from 'path';
-import { fileURLToPath } from 'url';
-import dotenv from 'dotenv';
-import pg from 'pg';
+import { pool } from '../lib/db.js';
 
-const { Pool } = pg;
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const rootEnvPath = path.resolve(__dirname, '../../../../.env');
-
-if (!process.env.GEMINI_API_KEY) {
-  dotenv.config({ path: rootEnvPath });
-}
-
+/**
+ * TrendService - Versión Senior Centralizada
+ * Maneja la generación de nichos con Gemini y el caché en PostgreSQL.
+ */
 export class TrendService {
   private genAI: GoogleGenerativeAI;
   private model: GenerativeModel;
-  private pool: pg.Pool;
+  private pool = pool; // Usamos el pool centralizado de lib/db.js
 
   constructor() {
-    this.pool = new Pool({
-      user: process.env.DB_USER,
-      host: process.env.DB_HOST,
-      database: process.env.DB_NAME,
-      password: process.env.DB_PASSWORD,
-      port: parseInt(process.env.DB_PORT || '5432'),
-    });
-
+    // 1. Cargamos la API Key desde las variables de entorno (GCP ya las provee)
     const apiKey = process.env.GEMINI_API_KEY;
-    if (apiKey) {
-      this.genAI = new GoogleGenerativeAI(apiKey);
-      // Mantenemos Flash 2.5 por velocidad y costo
-    //   this.model = this.genAI.getGenerativeModel({ model: "gemini-flash-latest" });
-    this.model = this.genAI.getGenerativeModel({ 
-        model: "gemini-3-flash-preview", // O "gemini-2.0-flash" si ya tienes acceso estable
-        generationConfig: {
-            responseMimeType: "application/json", // Crucial para tu flujo de análisis
-        }
-        });
-    } else {
-      throw new Error("❌ TrendService: GEMINI_API_KEY no encontrada en el .env");
+
+    if (!apiKey) {
+      throw new Error("❌ TrendService: GEMINI_API_KEY no encontrada en el entorno.");
     }
+
+    this.genAI = new GoogleGenerativeAI(apiKey);
+
+    // 2. Configuramos el modelo Gemini (Flash 1.5 es ideal por balance costo/velocidad)
+    this.model = this.genAI.getGenerativeModel({
+      model: "gemini-2.5-pro", // Cambia a "gemini-3.1-pro-preview" si quieres la última versión (más costosa)
+      generationConfig: {
+        responseMimeType: "application/json",
+      }
+    });
+    console.log("🔥 [VERSION_CHECK]: 10:13 AM - INTENTO FINAL V1.0.4");
+    console.log("🤖 [TrendService]: Inicializado correctamente.");
   }
 
+  /**
+   * Obtiene nichos dinámicos. Primero busca en DB (24h caché), 
+   * si no hay, consulta a la IA.
+   */
   async getDynamicNiches(country: string): Promise<string[]> {
     try {
-      // 1. Check de Caché (Capa de eficiencia)
+      // 1. Check de Caché (Capa de eficiencia para no quemar tokens/créditos)
       const cacheQuery = `
         SELECT niche_text FROM niche_cache 
         WHERE country_code = $1 AND created_at > NOW() - INTERVAL '24 hours'
@@ -54,15 +45,15 @@ export class TrendService {
       const cachedRes = await this.pool.query(cacheQuery, [country]);
 
       if (cachedRes.rows.length > 0) {
-        console.log(`♻️  [Cache] Reutilizando ${cachedRes.rows.length} nichos para ${country}`);
+        console.log(`♻️  [Cache]: Reutilizando ${cachedRes.rows.length} nichos para ${country}`);
         return cachedRes.rows.map(r => r.niche_text);
       }
 
       // 2. Generación con IA (Si no hay caché)
-      console.log(`🧠 [Gemini] Generando palabras clave de búsqueda para: ${country}...`);
+      console.log(`🧠 [Gemini]: Generando tendencias frescas para: ${country}...`);
       const niches = await this.fetchNichesFromAI(country);
 
-      // 3. Persistencia en Caché
+      // 3. Persistencia en Caché para las próximas 24 horas
       for (const niche of niches) {
         await this.pool.query(
           'INSERT INTO niche_cache (country_code, niche_text) VALUES ($1, $2)',
@@ -73,39 +64,39 @@ export class TrendService {
       return niches;
     } catch (error: any) {
       console.error(`❌ Error en TrendService para ${country}:`, error.message);
-      // Fallback a términos genéricos que SIEMPRE traen productos
-      return ['Mini Projector', 'Massage Gun', 'Portable Blender', 'LED Strip Lights'];
+      // Fallback Senior: Nunca dejes que el proceso muera, devuelve básicos que venden
+      return ['Mini Projector', 'Massage Gun', 'Portable Blender', 'Solar Powerbank'];
     }
   }
 
+  /**
+   * Consulta a Gemini bajo un rol de analista de e-commerce.
+   */
   private async fetchNichesFromAI(country: string): Promise<string[]> {
-    const currentDate = new Date().toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
-    
-    /**
-     * ESTRATEGIA SENIOR: 
-     * Forzamos a Gemini a entregar "Search Terms" (Keywords de producto) 
-     * en lugar de "Conceptos de marketing".
-     */
+    const prompt = `
+      Act as an AliExpress SEO & E-commerce Trend Researcher. 
+      Generate 15 high-demand search terms for physical products currently trending.
 
-        const prompt = `
-            Act as an AliExpress SEO & E-commerce Trend Researcher. 
-            Generate 8 high-demand search terms for physical products currently trending.
+      STRICT RULES:
+      1. Use only specific PHYSICAL OBJECTS (e.g., "Vacuum Sealer", "Massage Gun").
+      2. NO abstract categories or concepts (e.g., NO "Eco-friendly", use "Solar Powerbank").
+      
+      3. Language: English only (for AliExpress API compatibility).
+      4. Target: Products under $85 USD with high viral potential in ${country}.
 
-            STRICT RULES:
-            1. Use only specific PHYSICAL OBJECTS (e.g., "Vacuum Sealer", "Massage Gun").
-            2. NO abstract categories or concepts (e.g., NO "Eco-friendly", use "Solar Powerbank").
-            3. Maximum 2 words per term.
-            4. Language: English only.
-            5. Target: Products under $50 USD with high viral potential.
+      Return ONLY a valid JSON array of strings: ["Term 1", "Term 2", ...]
+    `;
 
-            Return ONLY a valid JSON array of strings: ["Term 1", "Term 2", ...]
-            `;
-
-    const result = await this.model.generateContent(prompt);
-    const response = await result.response.text();
-    
-    // Limpieza de posibles tags de Markdown que Gemini suele incluir
-    const cleanJson = response.replace(/```json|```/g, "").trim();
-    return JSON.parse(cleanJson);
+    try {
+      const result = await this.model.generateContent(prompt);
+      const response = await result.response.text();
+      
+      // Limpieza de tags Markdown por si Gemini se pone creativo
+      const cleanJson = response.replace(/```json|```/g, "").trim();
+      return JSON.parse(cleanJson);
+    } catch (err) {
+      console.error("❌ [Gemini Error]: Falló la generación de contenido.", err);
+      throw err;
+    }
   }
 }

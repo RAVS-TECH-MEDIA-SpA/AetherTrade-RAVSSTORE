@@ -1,0 +1,8 @@
+.env
+node_modules/
+dist/
+build/
+.git
+# Ignorar node_modules de las apps también
+apps/*/node_modules/
+libs/*/node_modules/

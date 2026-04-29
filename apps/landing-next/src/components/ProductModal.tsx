@@ -1,115 +1,108 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { X, CheckCircle2, ShoppingCart, ZoomIn, Truck, Star } from 'lucide-react';
+import { X, CheckCircle2, ShoppingCart, Truck, Star, AlertCircle, PlayCircle } from 'lucide-react';
 
-export default function ProductModal({ productId, onClose }: { productId: string, onClose: () => void }) {
+interface ProductModalProps {
+  productId: string;
+  onClose: () => void;
+}
+
+export default function ProductModal({ productId, onClose }: ProductModalProps) {
   const [data, setData] = useState<any>(null);
-  const [activeImg, setActiveImg] = useState<string>('');
+  const [activeMedia, setActiveMedia] = useState<{ type: 'image' | 'video'; url: string } | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false); 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
+  const getVideoEmbedUrl = (url: string) => {
+    if (!url) return null;
+    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+    const match = url.match(regExp);
+    return (match && match[2].length === 11) 
+      ? `https://www.youtube.com/embed/${match[2]}?autoplay=1&modestbranding=1&rel=0` 
+      : url;
+  };
+
   useEffect(() => {
     setLoading(true);
-    fetch(`https://ravstore-monorepo.vercel.app/api/products/${productId}`)
-      .then(res => {
-        if (!res.ok) throw new Error('No se pudo cargar el producto');
-        return res.json();
-      })
+    setIsPlaying(false);
+    fetch(`/api/products/${productId}`)
+      .then(res => res.json())
       .then(json => {
-        setData(json);
-        const initial = json.local_images?.[0] || json.serper_images?.[0] || json.gallery?.[0];
-        setActiveImg(initial || 'https://via.placeholder.com/600');
+        const gallery: any[] = [];
+        if (json.video_url) gallery.push({ type: 'video', url: json.video_url });
+        const imgs = json.local_images?.length > 0 ? json.local_images : [json.image_url];
+        imgs.forEach((img: string) => img && gallery.push({ type: 'image', url: img }));
+        
+        setData({ ...json, fullGallery: gallery });
+        setActiveMedia(gallery[0] || null);
         setLoading(false);
-      })
-      .catch(() => {
-        setError(true);
-        setLoading(false);
-      });
+      }).catch(() => setError(true));
   }, [productId]);
 
-  if (loading) return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-sm">
-      <div className="text-violet-500 animate-pulse font-black uppercase tracking-widest">Cargando Winner...</div>
-    </div>
-  );
-
+  if (loading) return <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90"><div className="w-12 h-12 border-4 border-violet-500 border-t-transparent rounded-full animate-spin"></div></div>;
   if (error || !data) return null;
 
-  const gallery = Array.from(new Set([
-    ...(data.local_images || []),
-    ...(data.serper_images || []),
-    ...(data.gallery || [])
-  ])).filter(img => img && typeof img === 'string');
+  // Lógica de títulos y descripción (Soporta múltiples llaves de la IA)
+  const title = data.marketing_copy?.headline || data.marketing_copy?.title || data.title_original;
+  const description = data.marketing_copy?.description || data.marketing_copy?.copy || "Analizando beneficios...";
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/95 backdrop-blur-md animate-in fade-in duration-300">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/95 backdrop-blur-md">
       <div className="bg-slate-950 border border-slate-800 w-full max-w-6xl max-h-[90vh] overflow-hidden rounded-[3rem] relative shadow-2xl flex flex-col md:flex-row">
         
-        <button onClick={onClose} className="absolute top-6 right-6 text-slate-400 hover:text-white z-[110] bg-slate-900/50 p-2 rounded-full transition-colors">
-          <X className="w-6 h-6" />
-        </button>
+        <button onClick={onClose} className="absolute top-6 right-6 text-slate-400 z-[110] bg-slate-900/50 p-2 rounded-full"><X/></button>
         
-        {/* VISOR DE IMÁGENES */}
+        {/* MULTIMEDIA */}
         <div className="w-full md:w-1/2 p-8 flex flex-col gap-6 bg-slate-900/10">
-          <div className="relative group aspect-square rounded-[2.5rem] overflow-hidden border border-slate-800 bg-slate-900/50">
-            <img 
-              src={activeImg} 
-              className="w-full h-full object-cover transition-all duration-700 group-hover:scale-105" 
-              alt="Vista principal"
-              onError={(e) => e.currentTarget.src = 'https://via.placeholder.com/600'}
-            />
-            <div className="absolute top-6 left-6 bg-emerald-500 text-black text-[10px] font-black px-4 py-2 rounded-full shadow-lg flex items-center gap-2 uppercase tracking-widest">
-              <Truck className="w-3.5 h-3.5" /> Envío Gratis Chile
+          <div className="relative aspect-square rounded-[2.5rem] overflow-hidden border border-slate-800 bg-slate-900/50">
+            {activeMedia?.type === 'video' ? (
+              <div className="w-full h-full">
+                {!isPlaying ? (
+                  <div className="relative w-full h-full cursor-pointer" onClick={() => setIsPlaying(true)}>
+                    <img src={data.image_url} className="w-full h-full object-cover brightness-50" />
+                    <div className="absolute inset-0 flex items-center justify-center"><PlayCircle className="w-16 h-16 text-white" /></div>
+                  </div>
+                ) : (
+                  activeMedia.url.includes('youtube') || activeMedia.url.includes('youtu.be') ? (
+                    <iframe src={getVideoEmbedUrl(activeMedia.url)!} className="w-full h-full" allow="autoplay; fullscreen" />
+                  ) : (
+                    <video src={activeMedia.url} controls autoPlay className="w-full h-full object-cover" />
+                  )
+                )}
+              </div>
+            ) : ( <img src={activeMedia?.url} className="w-full h-full object-cover" /> )}
+            
+            <div className="absolute top-6 left-6 bg-emerald-500 text-black text-[10px] font-black px-4 py-2 rounded-full flex flex-col items-start leading-none uppercase">
+              <span><Truck className="w-3 h-3 inline mr-1"/> Envío Gratis Chile</span>
+              <span className="text-[8px] mt-1 opacity-80">Llega en 10-12 días</span>
             </div>
           </div>
-
-          <div className="flex gap-4 overflow-x-auto pb-2 scrollbar-hide">
-            {gallery.map((img: string, i: number) => (
-              <button 
-                key={i}
-                onClick={() => setActiveImg(img)}
-                className={`flex-shrink-0 w-20 h-20 rounded-2xl border-2 overflow-hidden transition-all ${activeImg === img ? 'border-violet-500 scale-95 shadow-lg shadow-violet-500/20' : 'border-slate-800 opacity-40 hover:opacity-100'}`}
-              >
-                <img src={img} className="w-full h-full object-cover" />
+          
+          {/* Thumbnails */}
+          <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
+            {data.fullGallery?.map((item: any, i: number) => (
+              <button key={i} onClick={() => {setActiveMedia(item); setIsPlaying(false);}} className={`w-16 h-16 rounded-xl border-2 overflow-hidden ${activeMedia?.url === item.url ? 'border-violet-500' : 'border-slate-800'}`}>
+                {item.type === 'video' ? <PlayCircle className="w-6 h-6 m-auto mt-4 text-white"/> : <img src={item.url} className="w-full h-full object-cover"/>}
               </button>
             ))}
           </div>
         </div>
 
         {/* INFO */}
-        <div className="w-full md:w-1/2 p-12 overflow-y-auto border-l border-slate-800/50 flex flex-col">
-          <div className="flex items-center gap-1 mb-4">
-            {[...Array(5)].map((_, i) => <Star key={i} className="w-4 h-4 text-yellow-400 fill-yellow-400" />)}
-            <span className="text-[10px] text-slate-500 font-black ml-2 uppercase tracking-[0.2em]">Selección Premium</span>
-          </div>
-
-          <h2 className="text-4xl font-black leading-[1.1] text-white tracking-tighter mb-6">
-            {data.marketing_copy?.headline || data.title_original}
-          </h2>
-
-          <p className="text-slate-400 text-lg leading-relaxed mb-8">
-            {data.marketing_copy?.description}
-          </p>
+        <div className="w-full md:w-1/2 p-12 overflow-y-auto flex flex-col">
+          <h2 className="text-4xl font-black text-white leading-tight mb-4 tracking-tighter">{title}</h2>
+          <p className="text-slate-400 text-lg mb-8 leading-relaxed">{description}</p>
           
-          <div className="space-y-4 mb-12">
-            {data.marketing_copy?.bullets?.map((b: string, i: number) => (
-              <div key={i} className="flex items-start gap-3 text-sm text-slate-300">
-                <CheckCircle2 className="w-5 h-5 text-emerald-500 mt-0.5 flex-shrink-0" />
-                <span className="leading-tight">{b}</span>
-              </div>
-            ))}
-          </div>
-
+          {/* Precio CLP Formateado */}
           <div className="mt-auto pt-8 border-t border-slate-800 flex items-center justify-between">
             <div>
-              <p className="text-[10px] text-slate-500 font-black uppercase tracking-[0.2em] mb-1">Total a Pagar</p>
+              <p className="text-[10px] text-slate-500 font-black uppercase mb-1">Precio Final Oferta</p>
               <p className="text-5xl font-black text-white tracking-tighter">
-                ${new Intl.NumberFormat('es-CL').format(data.suggested_price_local || 0)}
+                {new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 }).format(data.suggested_price_local || 0)}
               </p>
             </div>
-            <button className="bg-violet-600 hover:bg-violet-500 text-white px-10 py-5 rounded-[1.5rem] font-black uppercase text-xs tracking-[0.2em] transition-all shadow-xl shadow-violet-600/20 active:scale-95 flex items-center gap-3">
-              <ShoppingCart className="w-4 h-4" /> Comprar Ahora
-            </button>
+            <button className="bg-violet-600 text-white px-8 py-5 rounded-2xl font-black uppercase text-xs flex items-center gap-3"><ShoppingCart/> Comprar Ahora</button>
           </div>
         </div>
       </div>

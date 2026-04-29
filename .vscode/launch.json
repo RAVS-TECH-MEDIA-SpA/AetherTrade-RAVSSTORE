@@ -6,11 +6,22 @@
       "request": "launch",
       "name": "Debug Workers-AI",
       "runtimeExecutable": "npx",
-      "runtimeArgs": ["tsx", "src/index.ts"],
+      "runtimeArgs": [
+        "tsx",
+        "src/index.ts"
+      ],
       "cwd": "${workspaceFolder}/apps/workers-ai",
-      "skipFiles": ["<node_internals>/**"],
+      "sourceMaps": true, // Forzamos la lectura de mapas
+      "smartStep": true,  // Salta código generado automáticamente
+      "autoAttachChildProcesses": true, // CRUCIAL: tsx lanza procesos hijos
+      "skipFiles": [
+        "<node_internals>/**",
+        "**/node_modules/**"
+      ],
       "console": "integratedTerminal",
-      "internalConsoleOptions": "neverOpen"
+      "env": {
+        "NODE_ENV": "development"
+      }
     }
   ]
 }

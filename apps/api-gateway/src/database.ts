@@ -1,19 +1,10 @@
 import { Pool } from 'pg';
 import dotenv from 'dotenv';
+import { pool } from '../../../apps/workers-ai/src/lib/db.js'; // Reutilizamos la conexión del worker para evitar múltiples pools
 
 dotenv.config();
 
-const pool = new Pool({
-  user: process.env.DB_USER,
-  host: process.env.DB_HOST,
-  database: process.env.DB_NAME,
-  password: process.env.DB_PASSWORD,
-  port: parseInt(process.env.DB_PORT || '5432'),
-  // Configuraciones de optimización para Senior
-  max: 20, // Máximo de conexiones simultáneas
-  idleTimeoutMillis: 30000, 
-  connectionTimeoutMillis: 2000,
-});
+
 
 export const query = (text: string, params?: any[]) => {
   return pool.query(text, params);

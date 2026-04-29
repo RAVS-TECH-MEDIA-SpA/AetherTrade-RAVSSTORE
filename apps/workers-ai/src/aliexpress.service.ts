@@ -5,98 +5,115 @@ import dotenv from 'dotenv';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-dotenv.config({ path: path.resolve(__dirname, '../../../../.env') });
+
+if (process.env.NODE_ENV !== 'production') {
+  dotenv.config({ path: path.resolve(__dirname, '../../../../.env') });
+}
 
 export class AliExpressService {
-  private apiKey: string;
+  private apiKey: string = process.env.RAPID_API_KEY || '';
+  private serperApiKey: string = process.env.SERPER_API_KEY || '';
   private readonly host = 'aliexpress-datahub.p.rapidapi.com';
 
-  constructor() {
-    this.apiKey = process.env.RAPID_API_KEY || '';
+  private fixUrl(url: string | null): string | null {
+    if (!url) return null;
+    return url.startsWith('//') ? `https:${url}` : url;
   }
 
-  /**
-   * PASO 1: Búsqueda de tendencias (Filtro superficial)
-   * Gasta créditos por búsqueda (no por producto individual).
-   */
+  private async wait(): Promise<void> {
+    const ms = Math.floor(Math.random() * 600) + 400; 
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
   async searchTrending(niche: string, country: string) {
     if (!this.apiKey) {
-      console.error('❌ AliExpressService: RAPID_API_KEY no encontrada.');
+      console.log("❌ NO HAY API KEY DE RAPIDAPI CONFIGURADA.");
       return [];
     }
-
+    
     try {
+      await this.wait();
       const options = {
         method: 'GET',
         url: `https://${this.host}/item_search_3`,
-        params: {
-          q: niche,
-          page: '1',
-          region: country, // Ahora dinámico por mercado
-          sort: 'salesDesc', // Priorizamos ventas desde el origen
-          locale: 'en_US',
-          currency: 'USD'
-        },
-        headers: {
-          'x-rapidapi-key': this.apiKey,
-          'x-rapidapi-host': this.host
-        }
+        params: { q: niche, page: '1', region: country, sort: 'salesDesc', locale: 'en_US', currency: 'USD' },
+        headers: { 'x-rapidapi-key': this.apiKey, 'x-rapidapi-host': this.host },
+        timeout: 15000
       };
 
+      console.log(`⏳ Buscando en RapidAPI: "${niche}"...`);
       const response = await axios.request(options);
+      
       const rawItems = response.data?.result?.resultList || [];
+      console.log(`📦 RapidAPI devolvió ${rawItems.length} resultados brutos para "${niche}".`);
 
       return rawItems.map((entry: any) => {
         const item = entry.item;
+        const isFreeShipping = item.delivery?.freeShipping === true || item.delivery?.freeShipping === "true";
+        
         return {
           aliexpress_id: item.itemId,
           title: item.title,
           price: parseFloat(item.sku?.def?.promotionPrice || item.sku?.def?.price || '0'),
           rating: item.averageStarRate ? parseFloat(item.averageStarRate) : 0,
           sales: item.sales || 0,
-          url: item.itemUrl.startsWith('http') ? item.itemUrl : `https:${item.itemUrl}`,
-          image: item.image.startsWith('http') ? item.image : `https:${item.image}`
+          url: this.fixUrl(item.itemUrl),
+          imageUrl: this.fixUrl(item.image),
+          freeShipping: isFreeShipping
         };
       });
-
     } catch (error: any) {
-      console.error(`❌ Error en RapidAPI [Search - ${niche}]:`, error.message);
+      // AQUÍ ESTÁ LA MAGIA: Nos va a mostrar el error REAL que manda RapidAPI
+      console.error(`🚨 ERROR CRÍTICO EN RAPIDAPI para "${niche}":`, error.response?.data || error.message);
       return []; 
     }
   }
 
-  /**
-   * PASO 2: Detalle profundo (Filtro quirúrgico)
-   * Gasta 1 CRÉDITO por producto. Solo se usa con potenciales ganadores.
-   */
   async getItemDetail(itemId: string) {
+    if (!this.apiKey) return null;
     try {
+      await this.wait();
       const options = {
         method: 'GET',
         url: `https://${this.host}/item_detail_2`,
         params: { itemId },
-        headers: {
-          'x-rapidapi-key': this.apiKey,
-          'x-rapidapi-host': this.host
-        }
+        headers: { 'x-rapidapi-key': this.apiKey, 'x-rapidapi-host': this.host },
+        timeout: 15000 // 🛡️ EL SALVAVIDAS: Si no responde en 15 segundos, corta y lanza error
       };
 
       const response = await axios.request(options);
       const data = response.data?.result;
-
       if (!data || !data.item) return null;
+
+       // [CP-ALI-2] Verifica los datos profundos (Video, Stock)
 
       return {
         itemId: data.item.itemId,
-        title: data.item.title, //
+        title: data.item.title,
         available: data.item.available,
         stock: data.item.sku?.def?.quantity || 0,
-        images: data.item.images || [],
+        images: (data.item.images || []).map((img: string) => this.fixUrl(img)),
         shippingFee: parseFloat(data.delivery?.shippingList?.[0]?.shippingFee || '0'),
-        price: parseFloat(data.item.sku?.def?.promotionPrice || data.item.sku?.def?.price || '0')
+        price: parseFloat(data.item.sku?.def?.promotionPrice || data.item.sku?.def?.price || '0'),
+        videoUrl: this.fixUrl(data.item.mainVideo?.videoUrl || data.item.video?.videoUrl || null)
       };
     } catch (error: any) {
-      console.error(`❌ Error en RapidAPI [Detail - ${itemId}]:`, error.message);
+      console.error(`❌ Error RapidAPI Detail:`, error.message);
+      return null;
+    }
+  }
+
+  async findProductVideo(title: string): Promise<string | null> {
+    if (!this.serperApiKey) return null;
+    try {
+      const response = await fetch('https://google.serper.dev/videos', {
+        method: 'POST',
+        headers: { 'X-API-KEY': this.serperApiKey, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ q: `${title} review showcase product`, gl: 'us', num: 1 })
+      });
+      const data = await response.json();
+      return data.videos?.[0]?.link || null;
+    } catch (e) {
       return null;
     }
   }

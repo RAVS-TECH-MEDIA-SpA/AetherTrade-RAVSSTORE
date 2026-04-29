@@ -1,7 +1,7 @@
 import express from 'express';
+import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import dotenv from 'dotenv';
 import { listenForCandidates } from './workers/analysis.worker.js'; 
 import { runDiscoveryTask } from './workers/discovery.worker.js'; 
 

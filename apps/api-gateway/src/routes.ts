@@ -1,8 +1,9 @@
 import { Router } from 'express';
 import { Pool } from 'pg'; // Reutilizando tu conexión a base de datos
+import { pool } from '../../workers-ai/src/lib/db.js'; // Importamos el pool de conexión directa
 
 const router = Router();
-const pool = new Pool({ /* config desde tu .env */ });
+
 
 /**
  * GET /api/winners

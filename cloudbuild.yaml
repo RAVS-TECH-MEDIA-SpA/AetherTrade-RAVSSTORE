@@ -1,0 +1,16 @@
+steps:
+  # 1. Construir la imagen usando el Dockerfile de la subcarpeta
+  - name: 'gcr.io/cloud-builders/docker'
+    args: [
+      'build', 
+      '-t', 'gcr.io/ravstore-scraper-prod/ravstore-worker:v1.0.4', 
+      '-f', 'apps/workers-ai/Dockerfile', 
+      '.'
+    ]
+
+# 2. Subir la imagen al registro
+images:
+  - 'gcr.io/ravstore-scraper-prod/ravstore-worker:v1.0.4'
+
+# 3. Opcional: Aumentar el tiempo por si el monorepo es pesado
+timeout: '1200s'

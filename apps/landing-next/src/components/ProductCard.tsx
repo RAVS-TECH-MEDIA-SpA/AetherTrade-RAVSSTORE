@@ -1,31 +1,53 @@
-// apps/landing-next/src/components/ProductCard.tsx
 'use client';
-import { TrendingUp, ArrowRight } from 'lucide-react';
+import { PlayCircle, Truck, ShoppingCart } from 'lucide-react';
 
-export const ProductCard = ({ product }: { product: any }) => {
-  const clp = (val: number) => new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP' }).format(val);
+export default function ProductCard({ product, onClick }: { product: any; onClick: () => void }) {
+  const deliveryInfo = product.target_country === 'CL' ? '10-12 días' : 'Internacional';
 
   return (
-    <div className="group bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden hover:shadow-2xl hover:shadow-violet-500/10 transition-all duration-300">
-      <div className="relative aspect-square">
-        <img src={product.image_url} alt={product.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-        <div className="absolute top-4 left-4 bg-black/60 backdrop-blur-md text-green-400 text-xs font-bold px-3 py-1.5 rounded-full border border-green-500/30 flex items-center gap-1">
-          <TrendingUp className="w-3 h-3" />
-          {product.roi_percent}% ROI ESTIMADO
-        </div>
-      </div>
-      <div className="p-6">
-        <h3 className="text-white font-bold text-lg line-clamp-2 mb-4 leading-snug">{product.title_original}</h3>
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-slate-500 text-[10px] uppercase tracking-wider font-bold">Precio Lanzamiento</p>
-            <p className="text-2xl font-black text-white">{clp(product.suggested_price_local)}</p>
+    <div 
+      onClick={onClick}
+      className="group relative bg-slate-900/40 border border-slate-800/50 rounded-[2.5rem] overflow-hidden hover:border-violet-500 transition-all duration-500 cursor-pointer flex flex-col"
+    >
+      <div className="relative aspect-square overflow-hidden">
+        <img 
+          src={product.image_url} 
+          className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+          alt={product.title_original}
+        />
+
+        {/* Badge de Envío */}
+        <div className="absolute bottom-4 left-4 flex flex-col gap-1">
+          <div className="bg-emerald-500 text-black text-[9px] font-black px-3 py-1.5 rounded-full flex items-center gap-1 uppercase">
+            <Truck className="w-3.5 h-3.5" /> Envío Gratis Chile
           </div>
-          <a href={`https://www.aliexpress.com/item/${product.aliexpress_id}.html`} target="_blank" className="bg-violet-600 hover:bg-violet-500 p-3 rounded-2xl transition-colors">
-            <ArrowRight className="text-white w-5 h-5" />
-          </a>
+          <div className="bg-black/60 backdrop-blur-md text-white text-[8px] font-bold px-3 py-1 rounded-full w-fit">
+             Llega en {deliveryInfo}
+          </div>
+        </div>
+
+        {/* Icono de Video */}
+        {product.video_url && (
+          <div className="absolute top-4 right-4 bg-violet-600/90 backdrop-blur-md p-2 rounded-full border border-white/20 shadow-xl">
+            <PlayCircle className="w-6 h-6 text-white animate-pulse" />
+          </div>
+        )}
+      </div>
+
+      <div className="p-6 flex flex-col flex-grow">
+        <h3 className="text-white font-bold text-sm leading-tight mb-4 line-clamp-2">
+          {product.marketing_copy?.headline || product.title_original}
+        </h3>
+
+        <div className="mt-auto flex items-end justify-between">
+          <p className="text-2xl font-black text-white tracking-tighter">
+            {new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 }).format(product.suggested_price_local)}
+          </p>
+          <div className="bg-violet-600 p-3 rounded-2xl group-hover:bg-violet-500 transition-colors">
+            <ShoppingCart className="w-5 h-5 text-white" />
+          </div>
         </div>
       </div>
     </div>
   );
-};
+}

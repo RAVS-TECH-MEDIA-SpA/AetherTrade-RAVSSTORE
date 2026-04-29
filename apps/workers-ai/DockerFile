@@ -1,41 +1,34 @@
-# 1. ETAPA DE CONSTRUCCIÓN (Build)
+# 1. ETAPA DE CONSTRUCCIÓN
 FROM node:20-slim AS builder
-
 WORKDIR /app
 
-# Instalamos dependencias de sistema necesarias para compilar módulos si hiciera falta
-RUN apt-get update && apt-get install -y python3 make g++ && rm -rf /var/lib/apt/lists/*
-
+# Copiamos los package.json del ROOT y de la APP (Importante en Monorepos)
 COPY package*.json ./
-# Instalamos TODO (incluyendo devDependencies para el build)
+COPY apps/workers-ai/package*.json ./apps/workers-ai/
+
+# Instalamos dependencias desde la raíz (para que NPM Workspaces funcione)
 RUN npm install
 
-COPY . .
-# Si usas TypeScript o necesitas compilar, descomenta la siguiente línea:
-# RUN npm run build
+# Copiamos el código de la app
+COPY apps/workers-ai/ ./apps/workers-ai/
 
-# 2. ETAPA DE EJECUCIÓN (Production Runner)
+# Compilamos la app específica
+WORKDIR /app/apps/workers-ai
+RUN npx tsc
+
+# 2. ETAPA DE EJECUCIÓN
 FROM node:20-slim AS runner
-
 WORKDIR /app
-
-# Definimos el entorno como producción
 ENV NODE_ENV=production
 
-# Copiamos solo los archivos necesarios de la etapa anterior
-COPY --from=builder /app/package*.json ./
-# Instalamos solo las dependencias de producción (omite devDependencies)
+# Copiamos solo lo necesario para ejecutar
+COPY --from=builder /app/apps/workers-ai/package*.json ./
+COPY --from=builder /app/apps/workers-ai/dist ./dist
+
+# Instalamos solo dependencias de producción
 RUN npm install --omit=dev
 
-# Copiamos el código compilado (o el código fuente si es JS plano)
-COPY --from=builder /app ./
-
-# Por seguridad: No correr como root
 USER node
-
-# Cloud Run requiere que el contenedor escuche en un puerto (8080)
 EXPOSE 8080
 ENV PORT 8080
-
-# Comando para iniciar el worker (Discovery + Analysis)
 CMD ["npm", "start"]

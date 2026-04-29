@@ -1,0 +1,29 @@
+<aside class="w-64 bg-gray-950 text-gray-200 p-6 flex flex-col h-screen sticky top-0">
+  <div class="mb-10 font-bold text-2xl text-blue-400">AT</div>
+
+  <nav class="flex-grow flex flex-col gap-2">
+    <a routerLink="/dashboard" routerLinkActive="bg-gray-800 text-white font-medium" class="flex items-center gap-3 p-3 rounded-xl text-gray-400 hover:bg-gray-800 hover:text-white transition-colors">
+      <app-icon name="dashboard" class="w-5 h-5"></app-icon>
+      Dashboard
+    </a>
+    <a routerLink="/products" routerLinkActive="bg-gray-800 text-white font-medium" class="flex items-center gap-3 p-3 rounded-xl text-gray-400 hover:bg-gray-800 hover:text-white transition-colors">
+      <app-icon name="trophy" class="w-5 h-5"></app-icon>
+      Winners List
+    </a>
+    <a routerLink="/trends" routerLinkActive="bg-gray-800 text-white font-medium" class="flex items-center gap-3 p-3 rounded-xl text-gray-400 hover:bg-gray-800 hover:text-white transition-colors">
+      <app-icon name="search" class="w-5 h-5"></app-icon>
+      Trend Scouting
+    </a>
+  </nav>
+
+  <div class="mt-auto border-t border-gray-800 pt-6">
+    <a routerLink="/settings" class="flex items-center gap-3 p-3 rounded-xl text-gray-400 hover:bg-gray-800 hover:text-white transition-colors">
+      <app-icon name="settings" class="w-5 h-5"></app-icon>
+      Settings
+    </a>
+    <a routerLink="/logout" class="flex items-center gap-3 p-3 rounded-xl text-red-400 hover:bg-red-950/30 transition-colors">
+      <app-icon name="logout" class="w-5 h-5"></app-icon>
+      Cerrar Sesión
+    </a>
+  </div>
+</aside>

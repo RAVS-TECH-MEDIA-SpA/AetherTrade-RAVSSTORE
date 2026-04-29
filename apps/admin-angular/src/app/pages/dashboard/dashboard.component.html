@@ -1,0 +1,93 @@
+<div class="space-y-8">
+  <div class="flex items-center justify-between">
+    <h2 class="text-3xl font-bold text-gray-900">Arbitrage <span class="text-gray-400 font-medium">Dashboard</span></h2>
+    <div class="text-sm text-gray-400 p-2 bg-white rounded-lg shadow-sm border">Data de Prueba | Actualizado: Hace 5 min</div>
+  </div>
+
+  <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+    <div *ngFor="let kpi of kpiCards" class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 hover:shadow-lg transition-all duration-300">
+      <div class="flex items-center justify-between mb-4">
+        <div class="p-3 bg-blue-50 text-blue-600 rounded-xl">
+          <app-icon [name]="kpi.icon" class="w-6 h-6"></app-icon>
+        </div>
+        <div class="flex items-center gap-1 text-sm font-medium" [ngClass]="{'text-green-500': kpi.change > 0, 'text-red-500': kpi.change < 0}">
+          <app-icon [name]="kpi.change > 0 ? 'arrow-up-right' : 'arrow-down-left'" class="w-4 h-4"></app-icon>
+          {{kpi.change | number:'1.1-1'}}%
+        </div>
+      </div>
+      <h4 class="text-sm text-gray-500 mb-1">{{kpi.title}}</h4>
+      <p class="text-3xl font-extrabold text-gray-950">{{kpi.value}}</p>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 xl:grid-cols-3 gap-8">
+    
+    <div class="xl:col-span-1 bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+      <div class="flex items-center justify-between mb-6">
+        <h3 class="text-lg font-semibold text-gray-900">Sales Analysis <span class="text-gray-400">by Country</span></h3>
+        <button class="text-sm text-blue-600 hover:underline">Ver Reporte</button>
+      </div>
+      <div class="h-64">
+        <canvas baseChart [data]="countrySalesData" [options]="barChartOptions" [type]="'bar'"></canvas>
+      </div>
+    </div>
+
+    <div class="xl:col-span-2 bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+      <div class="flex items-center justify-between mb-6">
+        <h3 class="text-lg font-semibold text-gray-900">Top Winning <span class="text-gray-400">Products</span></h3>
+        <button class="text-sm text-blue-600 hover:underline">Ver Todos ({{topProducts.length}})</button>
+      </div>
+      
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm text-left">
+          <thead class="text-xs text-gray-400 uppercase bg-gray-50 rounded-lg">
+            <tr>
+              <th scope="col" class="px-4 py-3">Product</th>
+              <th scope="col" class="px-4 py-3">Price Local</th>
+              <th scope="col" class="px-4 py-3">Margin USD</th>
+              <th scope="col" class="px-4 py-3">ROI</th>
+              <th scope="col" class="px-4 py-3">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let p of topProducts" class="bg-white border-b border-gray-100 hover:bg-gray-50">
+              <td class="px-4 py-4 flex items-center gap-3">
+                <img [src]="p.imageUrl" class="w-10 h-10 rounded-lg border">
+                <div>
+                  <div class="font-medium text-gray-900">{{p.name}}</div>
+                  <div class="text-xs text-gray-400">Country: <span class="font-bold">{{p.country}}</span></div>
+                </div>
+              </td>
+              <td class="px-4 py-4 font-mono text-gray-700">{{p.priceLocal | currency:p.country}}</td>
+              <td class="px-4 py-4 font-semibold text-green-600">+${{p.marginUsd | number:'1.2-2'}}</td>
+              <td class="px-4 py-4">
+                <span class="p-1 px-2 bg-emerald-50 text-emerald-700 rounded-lg font-medium">{{p.roi}}%</span>
+              </td>
+              <td class="px-4 py-4">
+                <button class="p-2 bg-gray-100 hover:bg-gray-200 rounded-lg">
+                  <app-icon name="eye" class="w-4 h-4 text-gray-500"></app-icon>
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+    <div class="flex items-center justify-between mb-6">
+      <h3 class="text-lg font-semibold text-gray-900">Trend Scouting <span class="text-gray-400">| Niche Performance</span></h3>
+      <div class="flex gap-2">
+        <select class="p-2 px-3 border border-gray-200 rounded-xl text-sm">
+          <option>Last 6 Months</option>
+          <option>Last Month</option>
+        </select>
+      </div>
+    </div>
+    <div class="h-80">
+      <canvas baseChart [data]="trendsTimelineData" [options]="lineChartOptions" [type]="'line'"></canvas>
+    </div>
+  </div>
+
+</div>

@@ -17,9 +17,9 @@
     "test:all": "npm test --workspaces"
   },
   "devDependencies": {
-    "@types/node": "^20.11.0",
-    "typescript": "^5.3.3"
-  },
+  "@types/node": "^20.11.0",
+  "typescript": "^5.4.5" 
+},
   "dependencies": {
     "ioredis": "^5.10.1"
   }
