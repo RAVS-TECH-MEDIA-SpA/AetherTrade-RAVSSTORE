@@ -1,1 +1,12 @@
-<router-outlet></router-outlet>
+<!-- src/app/app.html -->
+<div class="flex min-h-screen bg-[#0d1117]">
+  
+  <!-- Sidebar Fijo -->
+  <app-sidebar></app-sidebar>
+
+  <!-- Contenido Principal -->
+  <!-- ml-64 compensa el ancho del sidebar para que no tape el dashboard -->
+  <main class="flex-1 ml-64 overflow-x-hidden">
+    <router-outlet></router-outlet>
+  </main>
+</div>

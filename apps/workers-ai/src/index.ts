@@ -1,3 +1,4 @@
+// apps/workers-ai/src/index.ts
 import express from 'express';
 import dotenv from 'dotenv';
 import path from 'path';
@@ -15,14 +16,14 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 const app = express();
+app.use(express.json()); // Necesario para parsear el body de la API Gateway
+
 // GCP inyecta el puerto en la variable PORT. Si no existe, usamos 8080.
 const port = process.env.PORT || 8080;
-const host = '0.0.0.0'; // DEBE SER ASÍ
 
 /**
  * 2. Inicialización Silenciosa
- * No bloqueamos el arranque del servidor por los workers.
- * Cloud Run necesita que el puerto responda en < 10 segundos.
+ * Cloud Run necesita que el puerto responda rápido (< 10s).
  */
 const startWorkers = async () => {
   try {
@@ -30,31 +31,50 @@ const startWorkers = async () => {
     console.log('📡 AnalysisWorker: Suscripción activa.');
   } catch (err) {
     console.error('❌ Error iniciando AnalysisWorker:', err);
-    // En prod, quizás no quieres que el proceso muera, solo loguear.
   }
 };
 
 // 3. Rutas
+
+// Health Check para Cloud Run / Kubernetes
 app.get('/health', (req, res) => {
-  // Reportamos que el proceso está vivo inmediatamente
   res.status(200).send('Worker AI Online');
 });
 
+/**
+ * Endpoint para el Dashboard: Dispara un análisis específico
+ * Se conecta con dashboard.controller.ts del API-Gateway
+ */
+app.post('/analyze', (req, res) => {
+  const { niche, country } = req.body;
+  console.log(`🚀 Solicitud de análisis recibida: Nicho [${niche}] en [${country}]`);
+  
+  // Ejecutamos en segundo plano para no bloquear el puerto 8080
+  runDiscoveryTask(niche, country).catch(err => 
+    console.error('🚨 Error en Discovery Task:', err)
+  );
+
+  res.status(202).send({ 
+    message: 'Analysis initiated', 
+    context: { niche, country } 
+  });
+});
+
+// Trigger manual heredado del Ravstore Engine
 app.post('/trigger-discovery', (req, res) => {
   console.log('🚀 Trigger manual recibido.');
-  // Lo ejecutamos en background para no dejar colgada la petición HTTP
   runDiscoveryTask().catch(err => console.error('Error en Discovery:', err));
   res.status(202).send({ message: 'Discovery process started in background' });
 });
 
 /**
- * 4. El "Contrato de Cloud Run"
- * Escuchamos en '0.0.0.0' para que el tráfico externo pueda entrar al contenedor.
+ * 4. Ejecución del Servidor
+ * Escuchamos en '0.0.0.0' para visibilidad externa del contenedor.
  */
 app.listen(Number(port), '0.0.0.0', () => {
   console.log(`🚀 Ravstore Engine operando en puerto ${port}`);
   console.log(`🌍 Entorno: ${process.env.NODE_ENV || 'development'}`);
   
-  // Iniciamos los workers después de que el puerto ya está abierto
+  // Iniciamos los procesos de escucha después de abrir el puerto
   startWorkers();
 });

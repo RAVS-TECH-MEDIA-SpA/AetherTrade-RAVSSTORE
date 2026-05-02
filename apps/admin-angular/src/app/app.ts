@@ -1,14 +1,21 @@
+// src/app/app.ts
+import { Component } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { RouterOutlet, RouterModule } from '@angular/router';
+import { SidebarComponent } from './shared/components/sidebar/sidebar.component';
 
-
-// apps/admin-angular/src/app/app.ts
-import { Component } from '@angular/core'; // Para el error TS2552
-import { RouterOutlet } from '@angular/router'; // Para el error TS2304
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [RouterOutlet],
-  templateUrl: './app.html'
+  imports: [
+    CommonModule, 
+    RouterOutlet, 
+    RouterModule,
+    SidebarComponent
+  ],
+  templateUrl: './app.html',
+  styles: [] // <-- Cambiamos styleUrls por styles vacíos para evitar el error
 })
-export class AppComponent { // <--- ASEGÚRATE DE QUE DIGA "export class"
-  title = 'admin-angular';
+export class AppComponent {
+  title = 'Aether Trade Admin';
 }

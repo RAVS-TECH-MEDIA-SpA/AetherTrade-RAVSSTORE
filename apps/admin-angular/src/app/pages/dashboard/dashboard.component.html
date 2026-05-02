@@ -1,101 +1,119 @@
-<div class="space-y-8">
-  <div class="flex items-center justify-between">
-    <h2 class="text-3xl font-bold text-gray-900">Arbitrage <span class="text-gray-400 font-medium">Dashboard</span></h2>
-    <div class="text-sm text-gray-400 p-2 bg-white rounded-lg shadow-sm border">Data de Prueba | Actualizado: Hace 5 min</div>
-  </div>
-
-  <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
-    <div *ngFor="let kpi of kpiCards" class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 hover:shadow-lg transition-all duration-300">
-      <div class="flex items-center justify-between mb-4">
-        <div class="p-3 bg-blue-50 text-blue-600 rounded-xl">
-          <span class="font-bold">#</span> 
-        </div>
-        <div class="flex items-center gap-1 text-sm font-medium" [ngClass]="{'text-green-500': kpi.change > 0, 'text-red-500': kpi.change < 0}">
-          <span>{{ kpi.change > 0 ? '↑' : '↓' }}</span>
-          {{kpi.change | number:'1.1-1'}}%
-        </div>
-      </div>
-      <h4 class="text-sm text-gray-500 mb-1">{{kpi.title}}</h4>
-      <p class="text-3xl font-extrabold text-gray-950">{{kpi.value}}</p>
-    </div>
-  </div>
-
-  <div class="grid grid-cols-1 xl:grid-cols-3 gap-8">
+<!-- apps/admin-angular/src/app/pages/dashboard/dashboard.component.html -->
+<div class="min-h-screen bg-[#0d1117] text-[#c9d1d9] p-6 ml-64">
     
-    <div class="xl:col-span-1 bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-      <div class="flex items-center justify-between mb-6">
-        <h3 class="text-lg font-semibold text-gray-900">Sales Analysis <span class="text-gray-400">by Country</span></h3>
-        <button class="text-sm text-blue-600 hover:underline">Ver Reporte</button>
-      </div>
-      <div class="h-64">
-        <canvas baseChart 
-                [data]="countrySalesData" 
-                [options]="barChartOptions" 
-                [type]="'bar'">
-        </canvas>
-      </div>
+    <!-- Header de Búsqueda y Filtros -->
+    <header class="flex justify-between items-center mb-8">
+        <div class="relative w-96">
+            <input type="text" placeholder="Search products, markets..." 
+                   class="w-full bg-[#161b22] border border-[#30363d] rounded-lg px-10 py-2 focus:outline-none focus:border-[#58a6ff]">
+            <span class="material-icons absolute left-3 top-2.5 text-gray-500 text-sm">search</span>
+        </div>
+        <div class="flex items-center gap-4">
+            <div class="bg-[#161b22] border border-[#30363d] rounded-lg px-3 py-2 flex items-center gap-2 cursor-pointer hover:bg-[#1f242c]">
+                <span class="text-sm font-medium">Chile 🇨🇱</span>
+                <span class="material-icons text-xs">expand_more</span>
+            </div>
+            <button class="bg-[#238636] hover:bg-[#2ea043] text-white px-4 py-2 rounded-lg font-semibold flex items-center gap-2 transition-all">
+                <span>New Analysis</span>
+                <span class="material-icons text-sm">add</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- Resumen de KPIs -->
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+        <div *ngFor="let card of kpiCards" class="bg-[#161b22] border border-[#30363d] p-5 rounded-xl hover:border-[#8b949e] transition-all cursor-default">
+            <div class="flex justify-between items-start mb-3">
+                <span class="text-[#8b949e] text-sm font-semibold uppercase tracking-wider">{{ card.title }}</span>
+                <span class="material-icons text-[#8b949e] text-lg">{{ card.icon }}</span>
+            </div>
+            <div class="flex items-baseline gap-3">
+                <h3 class="text-2xl font-bold text-white tracking-tight">{{ card.value }}</h3>
+                <span [ngClass]="card.trend > 0 ? 'text-[#3fb950]' : 'text-[#f85149]'" class="text-xs font-bold flex items-center gap-0.5">
+                    {{ card.trend > 0 ? '▲' : '▼' }} {{ card.trend }}%
+                </span>
+            </div>
+        </div>
     </div>
 
-    <div class="xl:col-span-2 bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-      <div class="flex items-center justify-between mb-6">
-        <h3 class="text-lg font-semibold text-gray-900">Top Winning <span class="text-gray-400">Products</span></h3>
-        <button class="text-sm text-blue-600 hover:underline">Ver Todos ({{topProducts.length}})</button>
-      </div>
-      
-      <div class="overflow-x-auto">
-        <table class="w-full text-sm text-left">
-          <thead class="text-xs text-gray-400 uppercase bg-gray-50 rounded-lg">
-            <tr>
-              <th scope="col" class="px-4 py-3">Product</th>
-              <th scope="col" class="px-4 py-3">Price Local</th>
-              <th scope="col" class="px-4 py-3">Margin USD</th>
-              <th scope="col" class="px-4 py-3">ROI</th>
-              <th scope="col" class="px-4 py-3 text-center">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr *ngFor="let p of topProducts" class="bg-white border-b border-gray-100 hover:bg-gray-50">
-              <td class="px-4 py-4 flex items-center gap-3">
-                <div class="w-10 h-10 rounded-lg border bg-gray-100 overflow-hidden">
+    <!-- Tabla de Inventario Global -->
+    <div class="bg-[#161b22] border border-[#30363d] rounded-xl overflow-hidden mb-8 shadow-2xl">
+        <div class="p-5 border-b border-[#30363d] flex justify-between items-center bg-[#0d1117]">
+            <h2 class="text-lg font-bold text-white flex items-center gap-2">
+                <span class="material-icons text-teal-400">inventory_2</span> Global Inventory
+            </h2>
+            <div class="flex gap-3">
+                <span class="text-xs text-[#8b949e] self-center">1-20 of 1,234</span>
+                <div class="flex border border-[#30363d] rounded">
+                    <button class="px-3 py-1 text-xs hover:bg-[#30363d] border-r border-[#30363d]">Prev</button>
+                    <button class="bg-[#21262d] px-3 py-1 text-xs hover:bg-[#30363d]">Next</button>
                 </div>
-                <div>
-                  <div class="font-medium text-gray-900">{{p.name}}</div>
-                  <div class="text-xs text-gray-400">Country: <span class="font-bold">{{p.country}}</span></div>
-                </div>
-              </td>
-              <td class="px-4 py-4 font-mono text-gray-700">{{p.priceLocal | currency:p.country}}</td>
-              <td class="px-4 py-4 font-semibold text-green-600">+${{p.marginUsd | number:'1.2-2'}}</td>
-              <td class="px-4 py-4">
-                <span class="p-1 px-2 bg-emerald-50 text-emerald-700 rounded-lg font-medium">{{p.roi}}%</span>
-              </td>
-              <td class="px-4 py-4 text-center">
-                <button class="p-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-500">
-                  Ver
-                </button>
-              </td>
-            </tr>
-          </tbody>
+            </div>
+        </div>
+        <table class="w-full text-sm">
+            <thead class="bg-[#0d1117] text-[#8b949e] uppercase text-[10px] font-bold tracking-widest">
+                <tr>
+                    <th class="px-6 py-4 text-left">Product</th>
+                    <th class="px-6 py-4 text-left">Source</th>
+                    <th class="px-6 py-4 text-left">Margin (%)</th>
+                    <th class="px-6 py-4 text-left">Sales (30d)</th>
+                    <th class="px-6 py-4 text-left">Status</th>
+                    <th class="px-6 py-4 text-center">Actions</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-[#30363d]">
+                <tr *ngFor="let product of topProducts" class="hover:bg-[#1c2128] transition-colors group">
+                    <td class="px-6 py-4 flex items-center gap-3">
+                        <div class="w-10 h-10 rounded bg-[#0d1117] flex-shrink-0 overflow-hidden border border-[#30363d]">
+                            <img [src]="product.image_url" class="w-full h-full object-cover" onerror="this.src='https://placehold.co/100x100/161b22/8b949e?text=?'">
+                        </div>
+                        <span class="font-semibold text-white group-hover:text-teal-400 transition-colors">{{ product.name }}</span>
+                    </td>
+                    <td class="px-6 py-4"><span class="bg-[#21262d] px-2 py-1 rounded text-[10px] font-mono border border-[#30363d] text-gray-300">🇺🇸 {{ product.source }}</span></td>
+                    <td class="px-6 py-4 font-mono text-[#3fb950] font-bold">{{ product.margin }}%</td>
+                    <td class="px-6 py-4 font-medium">{{ product.sales_30d }}</td>
+                    <td class="px-6 py-4">
+                        <span [ngClass]="{
+                            'bg-[#23863626] text-[#3fb950] border-[#23863666]': product.status === 'Winner',
+                            'bg-[#d2992226] text-[#d29922] border-[#d2992266]': product.status === 'Pending',
+                            'bg-[#f8514926] text-[#f85149] border-[#f8514966]': product.status === 'Rejected'
+                        }" class="px-2 py-1 rounded-full text-[10px] border font-black uppercase tracking-tighter">
+                            {{ product.status }}
+                        </span>
+                    </td>
+                    <td class="px-6 py-4 text-center">
+                        <div class="flex justify-center items-center gap-4">
+                            <!-- Toggle Manual Winner -->
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" [checked]="product.status === 'Winner'" (change)="toggleWinner(product)" class="sr-only peer">
+                                <div class="w-9 h-5 bg-[#30363d] rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#238636]"></div>
+                            </label>
+                            <span class="material-icons text-base text-[#8b949e] cursor-pointer hover:text-white transition-colors">edit</span>
+                            <span class="material-icons text-base text-[#8b949e] cursor-pointer hover:text-white transition-colors">more_horiz</span>
+                        </div>
+                    </td>
+                </tr>
+            </tbody>
         </table>
-      </div>
     </div>
-  </div>
 
-  <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-    <div class="flex items-center justify-between mb-6">
-      <h3 class="text-lg font-semibold text-gray-900">Trend Scouting <span class="text-gray-400">| Niche Performance</span></h3>
-      <div class="flex gap-2">
-        <select class="p-2 px-3 border border-gray-200 rounded-xl text-sm bg-white cursor-pointer">
-          <option>Last 6 Months</option>
-          <option>Last Month</option>
-        </select>
-      </div>
+    <!-- Sección de Gráficos Inferiores -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div class="bg-[#161b22] border border-[#30363d] p-6 rounded-xl h-80 shadow-lg">
+            <h4 class="text-sm font-black mb-6 text-[#8b949e] uppercase tracking-widest flex items-center gap-2">
+                <span class="material-icons text-sm">public</span> Sales Analysis by Country
+            </h4>
+            <div class="h-56">
+                <canvas baseChart [data]="countrySalesData" [options]="barChartOptions" [type]="'bar'"></canvas>
+            </div>
+        </div>
+        <div class="bg-[#161b22] border border-[#30363d] p-6 rounded-xl h-80 shadow-lg">
+            <h4 class="text-sm font-black mb-6 text-[#8b949e] uppercase tracking-widest flex items-center gap-2">
+                <span class="material-icons text-sm">trending_up</span> Trend Scouting Performance
+            </h4>
+            <div class="h-56">
+                <canvas baseChart [data]="trendsTimelineData" [options]="lineChartOptions" [type]="'line'"></canvas>
+            </div>
+        </div>
     </div>
-    <div class="h-80">
-      <canvas baseChart 
-              [data]="trendsTimelineData" 
-              [options]="lineChartOptions" 
-              [type]="'line'">
-      </canvas>
-    </div>
-  </div>
 </div>

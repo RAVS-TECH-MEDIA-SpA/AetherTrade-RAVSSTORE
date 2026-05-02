@@ -1,29 +1,39 @@
-<aside class="w-64 bg-gray-950 text-gray-200 p-6 flex flex-col h-screen sticky top-0">
-  <div class="mb-10 font-bold text-2xl text-blue-400">AT</div>
+<!-- apps/admin-angular/src/app/shared/components/sidebar/sidebar.component.html -->
+<aside class="fixed left-0 top-0 h-screen w-64 bg-[#0d1117] border-r border-[#30363d] flex flex-col z-50">
+    
+    <!-- Brand / Logo Section -->
+    <div class="p-6 flex items-center gap-3">
+        <div class="w-10 h-10 bg-gradient-to-br from-[#00f2ff] to-[#7c4dff] rounded-xl flex items-center justify-center shadow-lg shadow-[#00f2ff]/20">
+            <span class="material-icons text-white text-2xl">auto_awesome</span>
+        </div>
+        <span class="text-xl font-black text-white tracking-tighter">Aether <span class="text-[#00f2ff]">Trade</span></span>
+    </div>
 
-  <nav class="flex-grow flex flex-col gap-2">
-    <a routerLink="/dashboard" routerLinkActive="bg-gray-800 text-white font-medium" class="flex items-center gap-3 p-3 rounded-xl text-gray-400 hover:bg-gray-800 hover:text-white transition-colors">
-      <app-icon name="dashboard" class="w-5 h-5"></app-icon>
-      Dashboard
-    </a>
-    <a routerLink="/products" routerLinkActive="bg-gray-800 text-white font-medium" class="flex items-center gap-3 p-3 rounded-xl text-gray-400 hover:bg-gray-800 hover:text-white transition-colors">
-      <app-icon name="trophy" class="w-5 h-5"></app-icon>
-      Winners List
-    </a>
-    <a routerLink="/trends" routerLinkActive="bg-gray-800 text-white font-medium" class="flex items-center gap-3 p-3 rounded-xl text-gray-400 hover:bg-gray-800 hover:text-white transition-colors">
-      <app-icon name="search" class="w-5 h-5"></app-icon>
-      Trend Scouting
-    </a>
-  </nav>
+    <!-- Main Navigation Items -->
+    <nav class="flex-1 px-4 mt-4 space-y-2">
+        <a *ngFor="let item of navItems" 
+           [routerLink]="item.route"
+           routerLinkActive="bg-[#161b22] text-[#00f2ff] border border-[#30363d]"
+           class="flex items-center gap-4 px-4 py-3 rounded-xl text-[#8b949e] hover:bg-[#161b22] hover:text-white transition-all group">
+            <span class="material-icons text-xl group-hover:scale-110 transition-transform">{{ item.icon }}</span>
+            <span class="font-medium tracking-wide text-sm">{{ item.label }}</span>
+        </a>
+    </nav>
 
-  <div class="mt-auto border-t border-gray-800 pt-6">
-    <a routerLink="/settings" class="flex items-center gap-3 p-3 rounded-xl text-gray-400 hover:bg-gray-800 hover:text-white transition-colors">
-      <app-icon name="settings" class="w-5 h-5"></app-icon>
-      Settings
-    </a>
-    <a routerLink="/logout" class="flex items-center gap-3 p-3 rounded-xl text-red-400 hover:bg-red-950/30 transition-colors">
-      <app-icon name="logout" class="w-5 h-5"></app-icon>
-      Cerrar Sesión
-    </a>
-  </div>
+    <!-- User Profile Section -->
+    <div class="p-4 border-t border-[#30363d] bg-[#161b22]/30">
+        <div class="flex items-center gap-3 p-2">
+            <div class="w-10 h-10 rounded-full bg-[#30363d] border-2 border-[#00f2ff]/30 overflow-hidden">
+                <!-- Imagen de marcador de posición profesional -->
+                <img src="https://ui-avatars.com/api/?name=Rodrigo+Dev&background=0d1117&color=00f2ff" alt="User profile">
+            </div>
+            <div class="flex-1 min-w-0">
+                <p class="text-sm font-bold text-white truncate">{{ userName }}</p>
+                <p class="text-[10px] text-[#8b949e] uppercase font-bold tracking-widest">{{ userRole }}</p>
+            </div>
+            <button (click)="logout()" class="text-[#8b949e] hover:text-[#f85149] transition-colors">
+                <span class="material-icons text-lg">logout</span>
+            </button>
+        </div>
+    </div>
 </aside>
