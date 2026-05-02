@@ -22,12 +22,9 @@
     "strictTemplates": true
   },
   "files": [],
-  "references": [
+ "references": [
     {
       "path": "./tsconfig.app.json"
-    },
-    {
-      "path": "./tsconfig.spec.json"
     }
   ]
 }

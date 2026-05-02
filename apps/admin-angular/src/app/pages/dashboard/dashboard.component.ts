@@ -1,12 +1,16 @@
 import { Component, OnInit } from '@angular/core';
-import { ChartConfiguration, ChartData, ChartType } from 'chart.js';
+import { CommonModule } from '@angular/common'; 
+import { BaseChartDirective } from 'ng2-charts'; 
+import { ChartConfiguration, ChartData } from 'chart.js'; 
 import { DashboardDataService, KpiCard, WinningProduct } from '../../shared/services/dashboard-data.service';
 
 @Component({
   selector: 'app-dashboard',
-  templateUrl: './dashboard.component.html',
-  styleUrls: ['./dashboard.component.scss']
+  standalone: true,
+  imports: [CommonModule, BaseChartDirective],
+  templateUrl: './dashboard.component.html'
 })
+
 export class DashboardComponent implements OnInit {
 
   // Inyectamos datos en duro

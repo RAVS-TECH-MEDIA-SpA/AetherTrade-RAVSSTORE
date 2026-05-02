@@ -1,0 +1,17 @@
+AIzaSyCRny85OB5cn0eo9giq2e9dp4CogW6NzSk
+AIzaSyDPgDxTs24D2s_kAft1r4J5-oFkLENECTw
+
+
+AIzaSyA0ENvUAcyqbcHRfnY5-orF4htMAx9zjdE
+
+AIzaSyC4K8cNWG4I7mAh7_H58WlQWvaUpgtfguw
+
+
+$ docker exec -i aether_db psql -U admin_aether -d aethertrade_db < "C:\aether-trade\infrastructure\db\init.sql"
+
+docker exec -it aether_redis redis-cli flushall
+
+
+landing en landing-next/src npm run dev 
+
+admin angular en admin-angular/src npx ng serve

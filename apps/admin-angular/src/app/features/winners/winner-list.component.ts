@@ -1,5 +1,6 @@
 import { Component, OnInit } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient } from '@angular/common/http'; // Asegúrate de tener el provideHttpClient en app.config.ts
+import { CommonModule } from '@angular/common';
 
 interface WinnerProduct {
   id: string;
@@ -12,40 +13,50 @@ interface WinnerProduct {
 
 @Component({
   selector: 'app-winner-list',
+  standalone: true,
+  imports: [CommonModule],
   template: `
-    <div class="admin-container">
-      <h1>Dashboard de Arbitraje: AetherTrade</h1>
-      <table class="winner-table">
-        <thead>
-          <tr>
-            <th>SKU</th>
-            <th>Costo (USD)</th>
-            <th>Sugerido (EUR)</th>
-            <th>Margen Est.</th>
-            <th>Mercado</th>
-            <th>Acción</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr *ngFor="let p of winners">
-            <td>{{ p.sku }}</td>
-            <td>{{ p.base_cost_usd | currency }}</td>
-            <td>{{ p.suggested_price | currency:'EUR' }}</td>
-            <td [style.color]="p.margin > 40 ? 'green' : 'orange'">{{ p.margin }}%</td>
-            <td>{{ p.market }}</td>
-            <td>
-              <button (click)="approve(p.id)" class="btn-approve">Activar Landing</button>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+    <div class="p-6 bg-white rounded-2xl shadow-sm border border-gray-100">
+      <div class="flex items-center justify-between mb-6">
+        <h1 class="text-2xl font-bold text-gray-800">Arbitrage Dashboard: AetherTrade</h1>
+        <span class="px-3 py-1 bg-blue-50 text-blue-600 text-xs font-semibold rounded-full">Data en Tiempo Real</span>
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="w-full text-left border-collapse">
+          <thead>
+            <tr class="border-b border-gray-50 text-gray-400 text-sm uppercase tracking-wider">
+              <th class="py-4 px-2 font-medium">SKU</th>
+              <th class="py-4 px-2 font-medium">Costo (USD)</th>
+              <th class="py-4 px-2 font-medium">Sugerido (EUR)</th>
+              <th class="py-4 px-2 font-medium">Margen Est.</th>
+              <th class="py-4 px-2 font-medium">Mercado</th>
+              <th class="py-4 px-2 font-medium text-right">Acción</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-50">
+            <tr *ngFor="let p of winners" class="hover:bg-gray-50/50 transition-colors">
+              <td class="py-4 px-2 font-mono text-sm text-gray-600">{{ p.sku }}</td>
+              <td class="py-4 px-2 text-gray-700">{{ p.base_cost_usd | currency:'USD':'symbol':'1.2-2' }}</td>
+              <td class="py-4 px-2 text-gray-700">{{ p.suggested_price | currency:'EUR':'symbol':'1.2-2' }}</td>
+              <td class="py-4 px-2">
+                <span [class]="p.margin > 40 ? 'text-green-600 font-semibold' : 'text-orange-500 font-semibold'">
+                  {{ p.margin }}%
+                </span>
+              </td>
+              <td class="py-4 px-2 text-gray-600">{{ p.market }}</td>
+              <td class="py-4 px-2 text-right">
+                <button (click)="approve(p.id)" 
+                        class="px-4 py-2 bg-green-500 hover:bg-green-600 text-white text-sm font-medium rounded-lg transition-all shadow-sm">
+                  Activar Landing
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </div>
-  `,
-  styles: [`
-    .winner-table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-    th, td { padding: 12px; border: 1px solid #ddd; text-align: left; }
-    .btn-approve { background: #2ecc71; color: white; border: none; padding: 8px 12px; cursor: pointer; border-radius: 4px; }
-  `]
+  `
 })
 export class WinnerListComponent implements OnInit {
   winners: WinnerProduct[] = [];
@@ -54,11 +65,16 @@ export class WinnerListComponent implements OnInit {
 
   ngOnInit() {
     this.http.get<WinnerProduct[]>('/api/v1/winners/pending')
-      .subscribe(data => this.winners = data);
+      .subscribe({
+        next: (data) => this.winners = data,
+        error: (err) => console.error('Error cargando ganadores:', err)
+      });
   }
 
   approve(id: string) {
     this.http.post(`/api/v1/winners/${id}/activate`, {})
-      .subscribe(() => this.winners = this.winners.filter(w => w.id !== id));
+      .subscribe(() => {
+        this.winners = this.winners.filter(w => w.id !== id);
+      });
   }
 }

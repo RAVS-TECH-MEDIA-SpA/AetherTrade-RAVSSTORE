@@ -49,7 +49,7 @@ export class AliExpressService {
 
       return rawItems.map((entry: any) => {
         const item = entry.item;
-        const isFreeShipping = item.delivery?.freeShipping === true || item.delivery?.freeShipping === "true";
+        const isFreeShipping = item.delivery?.freeShipping === true;
         
         return {
           aliexpress_id: item.itemId,

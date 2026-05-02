@@ -1,0 +1,10 @@
+/** @type {import('tailwindcss').Config} */
+module.exports = {
+  content: [
+    "./src/**/*.{html,ts}", // <--- Solo "./src", porque ya estás dentro de la carpeta admin-angular
+  ],
+  theme: {
+    extend: {},
+  },
+  plugins: [],
+}

@@ -22,12 +22,12 @@ export class TrendService {
 
     // 2. Configuramos el modelo Gemini (Flash 1.5 es ideal por balance costo/velocidad)
     this.model = this.genAI.getGenerativeModel({
-      model: "gemini-2.5-pro", // Cambia a "gemini-3.1-pro-preview" si quieres la última versión (más costosa)
+      model: "gemini-2.5-flash", // Cambia a "gemini-3.1-pro-preview" si quieres la última versión (más costosa)
       generationConfig: {
         responseMimeType: "application/json",
       }
     });
-    console.log("🔥 [VERSION_CHECK]: 10:13 AM - INTENTO FINAL V1.0.4");
+    
     console.log("🤖 [TrendService]: Inicializado correctamente.");
   }
 

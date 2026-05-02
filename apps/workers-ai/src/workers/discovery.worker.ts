@@ -21,7 +21,7 @@ const gemini = new GeminiService();
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 const FILTERS = { 
-  MIN_PRICE: 3.0, 
+  MIN_PRICE: 1.5, 
   MAX_PRICE: 85.0, 
   MIN_RATING: 4.2, 
   MIN_SALES: 50,
@@ -70,6 +70,8 @@ export async function runDiscoveryTask() {
           try {
             const detail = await aliService.getItemDetail(aliexpress_id);
 
+
+
             const finalPrice = Number(detail?.price) || Number(price) || 0;
             const finalShipping = Number(detail?.shippingFee) || 0;
             const finalTitle = detail?.title || title || "Producto sin nombre";
@@ -92,21 +94,32 @@ export async function runDiscoveryTask() {
             candidatesFound++;
 
             const insertQuery = `
-              INSERT INTO products (
-                aliexpress_id, title_original, image_url, video_url, target_country, 
-                base_cost_usd, shipping_cost_usd, rating, sales_count, status
-              )
-              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'PENDING')
-              ON CONFLICT (aliexpress_id, target_country) 
-              DO UPDATE SET updated_at = NOW(), sales_count = EXCLUDED.sales_count
-              RETURNING id;
-            `;
-            
-            const res = await pool.query(insertQuery, [
-              aliexpress_id, finalTitle, imageUrl, videoUrl, country_code,
-              finalPrice, finalShipping, rating, sales
-            ]);
+                  INSERT INTO products (
+                    aliexpress_id, title_original, image_url, video_url, target_country, 
+                    base_cost_usd, shipping_cost_usd, rating, sales_count, status,
+                    raw_details -- Nueva columna
+                  )
+                  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'PENDING', $10)
+                  ON CONFLICT (aliexpress_id, target_country) 
+                  DO UPDATE SET 
+                    updated_at = NOW(), 
+                    sales_count = EXCLUDED.sales_count,
+                    raw_details = EXCLUDED.raw_details -- Actualizamos el detalle por si cambió el stock/precio
+                  RETURNING id;
+                `;
 
+                const res = await pool.query(insertQuery, [
+                  aliexpress_id, 
+                  finalTitle, 
+                  imageUrl, 
+                  videoUrl, 
+                  country_code,
+                  finalPrice, 
+                  finalShipping, 
+                  rating, 
+                  sales,
+                  JSON.stringify(detail) // Pasamos el objeto completo como string para JSONB
+                ]);
             if (res.rows.length > 0) {
               await pubsub.topic('candidate-analysis-2').publishMessage({ 
                 data: Buffer.from(JSON.stringify({ 

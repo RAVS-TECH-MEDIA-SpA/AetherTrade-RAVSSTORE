@@ -1,110 +1,126 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import path from 'path';
+import dotenv from 'dotenv';
 
-const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+interface Competitor {
+  title: string;
+  price: number;
+  link?: string;
+  source: string;
+  isSynthetic: boolean;
+}
 
 export class GeminiService {
   private genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
+  // Cambiamos a gemini-1.5-flash para velocidad en discovery o pro para análisis profundo
   private model = this.genAI.getGenerativeModel({ 
-    model: "gemini-2.5-pro", 
-    generationConfig: { responseMimeType: "application/json" } 
+    model: "gemini-2.5-flash", 
+    generationConfig: { 
+      responseMimeType: "application/json",
+      temperature: 0.7, // Balance entre creatividad y precisión
+    } 
   });
 
+  /**
+   * Genera nichos basados en micro-tendencias y estacionalidad inversa (Hemisferio Norte/Sur)
+   */
   async generateDynamicNiches(country: string): Promise<string[]> {
-    await sleep(4000); 
-
     const month = new Date().toLocaleString('es-CL', { month: 'long' });
     
-    // PROMPT BLINDADO: Clima local, pero búsqueda en INGLÉS corto.
-   const prompt = `Actúa como experto en Dropshipping y analista de mercado. Estamos en el mes de ${month} y el mercado objetivo es ${country}. 
-    
-    REGLAS ESTRATÉGICAS:
-    1. BALANCE DE CATEGORÍAS: Identifica el clima actual en ${country} durante ${month}, pero NO te limites solo a productos estacionales. Tu lista de 15 nichos debe ser un mix estratégico que incluya: artículos estacionales, productos tecnológicos/smart home innovadores, y productos virales de estilo de vida o cuidado personal.
-    2. FORMATO ESTRICTO (CRÍTICO): Los nichos DEBEN generarse EXCLUSIVAMENTE EN INGLÉS y tener MÁXIMO 3 PALABRAS (ej: "portable space heater", "smart posture corrector", "led desk lamp"). La API de búsqueda fallará si usas español o frases largas.
-    3. ALTA DEMANDA / BAJA COMPETENCIA: Enfócate en sub-nichos específicos que muestren tendencia alcista actual en Google Trends o TikTok. Evita mercados hiper-saturados o genéricos (prohibido usar "clothing", "smartphones", "shoes", "gadgets").
-    
-    Genera la lista de 5 nichos de productos de AliExpress con alto potencial de venta.
-    Responde SOLO un JSON array de strings, sin bloques de código, sin markdown ni explicaciones adicionales: ["keyword1", "keyword2", "keyword3", "keyword4", "keyword5"]`;
+    const prompt = `
+      CONTEXTO: Actúa como un Analista de Inteligencia de Mercados especializado en Arbitraje Transfronterizo.
+      OBJETIVO: Identificar 2 micro-nichos de alta velocidad para el mercado de ${country} en el mes de ${month}.
+
+      PARÁMETROS DE SELECCIÓN:
+      1. ESTACIONALIDAD ESTRATÉGICA: Considera el clima actual en ${country}. Si es invierno, busca confort térmico; si es verano, busca portabilidad y exterior.
+      2. MIX DE PORTAFOLIO: 30% Estacionales, 40% Solución de Problemas (Problem-Solvers), 30% Estética/Tendencia Viral (TikTok-ready).
+      3. RESTRICCIÓN COMERCIAL: Máximo 3 palabras por nicho, en INGLÉS técnico. Evita palabras genéricas (prohibido: "gadgets", "clothing", "electronics").
+      4. FILTRO DE ESCALABILIDAD: Productos que tengan un "efecto WOW" visual pero que pesen menos de 1kg para optimizar el shipping internacional.
+
+      FORMATO DE SALIDA: JSON array de strings exclusivamente.
+      EJEMPLO: ["portable neck fan", "self-cleaning cat litter", "compression knee sleeve"]`;
     
     try {
       const result = await this.model.generateContent(prompt);
-      let rawText = result.response.text();
-      rawText = rawText.replace(/```json/gi, '').replace(/```/g, '').trim();
-      return JSON.parse(rawText);
+      return JSON.parse(result.response.text());
     } catch (error) {
-      console.error("❌ Error generando nichos:", error);
-      return ["smart home", "car accessories", "kitchen gadgets"]; 
+      console.error("❌ Error en Discovery IA:", error);
+      return ["innovative home tools", "travel comfort essentials", "smart fitness tech"];
     }
   }
 
+  /**
+   * Optimiza títulos de AliExpress para SEO con intención de compra
+   */
   async translateForSearch(title: string, targetLang: string): Promise<string> {
-    if (!title) return "producto";
-    
-    await sleep(4000); 
-
-    const prompt = `Convierte este título de AliExpress en una búsqueda comercial de máximo 3 palabras para Google ${targetLang}. 
-    PRODUCTO: ${title}. 
-    REGLAS: Sin acentos, sin marcas chinas. Ejemplo: Magcubic Projector HY300 Android -> Proyector LED portatil.
-    Responde SOLO el texto plano.`;
+    const prompt = `
+      TAREA: Refactorizar títulos de productos para SEO de e-commerce.
+      ORIGINAL: ${title}
+      IDIOMA OBJETIVO: ${targetLang}
+      
+      REGLAS:
+      1. Extrae el "Core Entity" del producto (ej: "Proyector", "Humidificador").
+      2. Añade el beneficio principal o característica técnica clave.
+      3. Máximo 4 palabras. Sin adjetivos vacíos ("amazing", "cheap"). Sin marcas.
+      
+      SALIDA: Solo el texto plano purificado.`;
     
     try {
       const result = await this.model.generateContent(prompt);
-      return result.response.text().replace(/[^a-zA-Z0-9 ]/g, '').trim();
+      return result.response.text().trim();
     } catch (error) {
       return title.split(' ').slice(0, 3).join(' ');
     }
   }
 
-  async analyzeArbitrage(aliData: any, competitors: any[], targetCountry: string, taxRate: number) {
-    await sleep(4000); 
+  /**
+   * Orquestador de Arbitraje: Análisis financiero y Copywriting Psicológico
+   */
+  // Agregamos landedCostUsd como 5to parámetro
+async analyzeArbitrage(
+  aliData: any, 
+  competitors: Competitor[], 
+  targetCountry: string, 
+  taxRate: number,
+  landedCostUsd: number // <--- Recibimos el costo con absorción de envío
+) {
+  // Buscamos si existe el marcador sintético en el array
+  const hasSynthetic = competitors.some(c => c.isSynthetic);
+  const minCompPrice = competitors.length > 0 ? Math.min(...competitors.map(c => c.price)) : 0;
+  
+  // Usamos el landedCostUsd que ya viene calculado con el envío local absorbido
+  const prompt = `
+    Actúa como un CFO y Director de Marketing de E-commerce. Evalúa la viabilidad financiera del producto: "${aliData.title}".
 
-    const minCompetitorPrice = competitors.length > 0 ? Math.min(...competitors.map(c => c.price)) : 0;
+    DATA ECONÓMICA (INPUT):
+    - Costo de Adquisición Total (Landing + Envío Local Absorbido): ${landedCostUsd.toFixed(2)} USD.
+    - Competencia Local Mínima: ${minCompPrice || 'N/A'}.
+    - Impuestos Aplicables (IVA/VAT): ${taxRate}%.
+    - Comisión de Pasarela (Estimada): 5%.
+
+    PROTOCOLO DE PRICING ESTRATÉGICO:
+    1. ESCENARIO COMPETITIVO: Si hay competencia real (${!hasSynthetic}), el 'suggestedPriceLocal' debe posicionarse un 2% por debajo de ${minCompPrice} para capturar volumen.
+    2. ESCENARIO DE EXCLUSIVIDAD: Si el competidor es "Aether-Market-Engine" (Sintético: ${hasSynthetic}), tienes un 'Océano Azul'. Optimiza para ROI de 100% a 250%.
+
+    LÓGICA DE DECISIÓN (WINNER):
+    - MARCAR COMO TRUE SOLO SI:
+      - ROI Final > 30% tras impuestos y comisiones.
+      - Margen Neto > $6 USD (Este es tu presupuesto de marketing).
+
+    ... (Resto de las reglas de Copywriting) ...
+  `;
+
+  try {
+    const result = await this.model.generateContent(prompt);
+    const parsed = JSON.parse(result.response.text());
     
-    const prompt = `Actúa como experto en Pricing Estratégico y Copywriting para E-commerce. Tu misión es determinar si un producto es un "Winner" para ${targetCountry}.
-
-    DATOS TÉCNICOS:
-    - PRODUCTO ORIGINAL: ${aliData.title}
-    - COSTO ALI (Producto + Envío): ${(aliData.price + aliData.shipping).toFixed(2)} USD
-    - PRECIO MÍNIMO COMPETENCIA LOCAL: ${minCompetitorPrice}
-    - IVA: ${taxRate}%
-
-    REGLAS DE ORO DE PRECIOS:
-    1. ANCLA: Si hay competencia, el 'suggestedPriceLocal' DEBE ser igual o un 2% menor que el competidor más barato (${minCompetitorPrice}). Si no hay, usa un markup realista sobre el costo.
-    2. MARGEN MÍNIMO: Si para ser competitivo el margen neto cae por debajo de $5 USD (después de IVA y costos), marca 'isWinner: false'.
-
-    INSTRUCCIONES DE MARKETING:
-    Debes generar un copy EXTENSO, detallado y persuasivo. Prohibido usar frases genéricas.
-    - 'localizedProductName': Nombre comercial real.
-    - 'headline': Título publicitario potente incluye.
-    - 'description': Mínimo 2 párrafos persuasivos centrados en solucionar el dolor del cliente.
-    - 'bullets': 3 a 5 puntos clave de venta con especificaciones reales.
-    - 'english_content': Traducción precisa para mercados internacionales.
-
-    RESPONDE JSON: {
-      "isWinner": boolean,
-      "suggestedPriceLocal": number,
-      "netMarginUsd": number,
-      "roiPercent": number,
-      "verdict": "Explicación técnica detallada del análisis financiero",
-      "marketingCopy": { 
-        "localizedProductName": "string",
-        "headline": "string", 
-        "description": "string", 
-        "bullets": ["string", "string", "string"],
-        "english_content": {
-          "title": "string",
-          "description": "string"
-        }
-      }
-    }`;
-    
-    try {
-      const result = await this.model.generateContent(prompt);
-      let rawText = result.response.text();
-      rawText = rawText.replace(/```json/gi, '').replace(/```/g, '').trim();
-      return JSON.parse(rawText);
-    } catch (error) {
-      console.error("Error IA Arbitraje:", error);
-      return { isWinner: false, verdict: "Error IA", suggestedPriceLocal: 0 };
-    }
+    // Devolvemos el objeto enriquecido
+    return {
+      ...parsed,
+      landedCostUsd // Mantenemos la trazabilidad del costo
+    };
+  } catch (error) {
+    return { isWinner: false, verdict: "Fallo en motor de análisis IA", suggestedPriceLocal: 0 };
   }
+}
 }
