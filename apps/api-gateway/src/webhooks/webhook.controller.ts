@@ -1,7 +1,7 @@
 // apps/api-gateway/src/webhooks/webhook.controller.ts
 import { Request, Response } from 'express';
 import { MercadoPagoConfig, Payment } from 'mercadopago';
-import { pool } from '../../../workers-ai/src/lib/db'; // <--- CORREGIDO: Apuntando a src/database.ts
+import { pool } from '../database'; // <--- CORREGIDO: Apuntando a src/database.ts
 
 const client = new MercadoPagoConfig({ 
   accessToken: process.env.MP_ACCESS_TOKEN || '' 

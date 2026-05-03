@@ -1,14 +1,18 @@
-// apps/api-gateway/src/app.ts
 import express from 'express';
 import cors from 'cors';
-import router from './routes';
+import dashboardRoutes from './routes'; // El archivo que creamos arriba
 
 const app = express();
 
 app.use(cors());
 app.use(express.json());
 
-// Montamos todas las rutas bajo /api
-app.use('/api', router);
+// IMPORTANTE: Si Angular pide /api/inventory, aquí lo capturamos
+app.use('/api', dashboardRoutes); 
+
+const PORT = 3000;
+app.listen(PORT, () => {
+  console.log(`🚀 API-Gateway corriendo en http://localhost:${PORT}`);
+});
 
 export default app;

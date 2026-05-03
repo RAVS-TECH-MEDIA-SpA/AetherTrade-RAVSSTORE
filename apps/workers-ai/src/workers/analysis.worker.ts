@@ -3,6 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import { pool } from '../lib/db.js';
+import { GeminiService } from './../gemini.service.js';
 
 import { CompetitorService } from '../competitor.service.js';
 import { SerperService } from '../services/serper.service.js';
@@ -22,7 +23,7 @@ const competitorService = new CompetitorService();
 const serper = new SerperService();
 const media = new MediaService();
 const scraper = new ScraperService();
-
+const gemini = new GeminiService()
 // CONFIGURACIÓN FINANCIERA (Aether Standards)
 const LOCAL_SHIPPING_ABSORPTION_USD = 5.00; // Lo que "absorbemos" para dar envío gratis al cliente
 const MIN_SAFETY_MARGIN_USD = 10.00;        // Margen base para el competidor sintético
@@ -36,6 +37,7 @@ export async function listenForCandidates() {
 
   subscription.on('message', async (message) => {
     const { dbId, targetCountry } = JSON.parse(message.data.toString());
+    const targetLang = targetCountry === 'CL' ? 'Español' : 'Inglés';
     
     try {
       // 1. OBTENEMOS DATA COMPLETA (Incluyendo el ID del nicho para telemetría)
@@ -57,8 +59,13 @@ export async function listenForCandidates() {
         Number(product.shipping_cost_usd) + 
         LOCAL_SHIPPING_ABSORPTION_USD;
 
+        const shortTitle = await gemini.translateForSearch(product.title_original, targetLang);
+      console.log(`🔍 Query original: "${product.title_original}" -> Optimizado: "${shortTitle}"`);
+
       // 3. OBTENER COMPETENCIA REAL
-      let marketResults = await scraper.getCompetitorPrices(product.title_original, targetCountry);
+
+      let titleForScraping = scraper.cleanProductName(shortTitle);
+      let marketResults = await scraper.getCompetitorPrices(titleForScraping, targetCountry);
 
       
       // 4. LÓGICA DE COMPETIDOR SINTÉTICO (Aether-Market-Engine)
@@ -72,10 +79,11 @@ export async function listenForCandidates() {
         const syntheticPriceLocal = syntheticPriceUsd * exchangeRate;
 
         marketResults = [{
-          title: "Referencia de Mercado (Aether Engine)",
-          price: Math.round(syntheticPriceLocal),
-          source: "Aether-Market-Engine",
-          isSynthetic: true
+            title: "Referencia de Mercado (Aether Engine)",
+            price: Math.round(syntheticPriceLocal),
+            source: "Aether-Market-Engine",
+            link: "internal://synthetic-reference", // <-- Añade esto para satisfacer a TS
+            isSynthetic: true
         }];
       }
 

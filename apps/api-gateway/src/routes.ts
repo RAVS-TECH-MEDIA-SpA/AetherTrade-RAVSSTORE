@@ -1,18 +1,23 @@
-// apps/api-gateway/src/routes.ts
 import { Router } from 'express';
-import { handleMercadoPagoWebhook } from './webhooks/webhook.controller';
-import { getDashboardStats, getInventory, triggerAnalysis } from './controllers/dashboard.controller';
+import { 
+  getDashboardStats, 
+  getInventory, 
+  triggerAnalysis 
+} from './controllers/dashboard.controller';
 
 const router = Router();
 
-// Webhooks de Pago
-router.post('/webhooks/mercadopago', handleMercadoPagoWebhook);
+/**
+ * Endpoints del Dashboard
+ */
 
-// Dashboard e Inventario
+// 1. Resumen de KPIs y Gráficos
 router.get('/stats/summary', getDashboardStats);
+
+// 2. Lista completa de productos
 router.get('/inventory', getInventory);
 
-// Motor de IA
-router.post('/analysis/trigger', triggerAnalysis);
+// 3. Disparo de análisis masivo (el que configuramos con ';' y limit)
+router.post('/analyze', triggerAnalysis);
 
 export default router;

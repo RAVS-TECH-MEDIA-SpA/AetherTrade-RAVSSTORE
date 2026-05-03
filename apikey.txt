@@ -7,7 +7,7 @@ AIzaSyA0ENvUAcyqbcHRfnY5-orF4htMAx9zjdE
 AIzaSyC4K8cNWG4I7mAh7_H58WlQWvaUpgtfguw
 
 
-$ docker exec -i aether_db psql -U admin_aether -d aethertrade_db < "C:\aether-trade\infrastructure\db\init.sql"
+docker exec -i aether_db psql -U admin_aether -d aethertrade_db < "C:\aether-trade\infrastructure\db\init.sql"
 
 docker exec -it aether_redis redis-cli flushall
 

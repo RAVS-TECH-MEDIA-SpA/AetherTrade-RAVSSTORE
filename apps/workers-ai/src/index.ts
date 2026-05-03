@@ -61,11 +61,11 @@ app.post('/analyze', (req, res) => {
 });
 
 // Trigger manual heredado del Ravstore Engine
-app.post('/trigger-discovery', (req, res) => {
-  console.log('🚀 Trigger manual recibido.');
-  runDiscoveryTask().catch(err => console.error('Error en Discovery:', err));
-  res.status(202).send({ message: 'Discovery process started in background' });
-});
+// app.post('/trigger-discovery', (req, res) => {
+//   console.log('🚀 Trigger manual recibido.');
+//   runDiscoveryTask().catch(err => console.error('Error en Discovery:', err));
+//   res.status(202).send({ message: 'Discovery process started in background' });
+// });
 
 /**
  * 4. Ejecución del Servidor

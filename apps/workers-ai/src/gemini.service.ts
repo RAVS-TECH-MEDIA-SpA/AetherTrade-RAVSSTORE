@@ -96,27 +96,55 @@ async analyzeArbitrage(
   const hasSynthetic = competitors.some(c => c.isSynthetic);
   const minCompPrice = competitors.length > 0 ? Math.min(...competitors.map(c => c.price)) : 0;
   
-  // Usamos el landedCostUsd que ya viene calculado con el envío local absorbido
-  const prompt = `
-    Actúa como un CFO y Director de Marketing de E-commerce. Evalúa la viabilidad financiera del producto: "${aliData.title}".
+ // apps/workers-ai/src/workers/discovery.worker.ts
 
-    DATA ECONÓMICA (INPUT):
-    - Costo de Adquisición Total (Landing + Envío Local Absorbido): ${landedCostUsd.toFixed(2)} USD.
-    - Competencia Local Mínima: ${minCompPrice || 'N/A'}.
-    - Impuestos Aplicables (IVA/VAT): ${taxRate}%.
-    - Comisión de Pasarela (Estimada): 5%.
+const prompt = `
+  Actúa como un CFO y Director de Marketing de E-commerce experto en Arbitraje Internacional. 
+  Tu misión es evaluar la viabilidad financiera y crear el material de venta para el producto: "${aliData.title}".
 
-    PROTOCOLO DE PRICING ESTRATÉGICO:
-    1. ESCENARIO COMPETITIVO: Si hay competencia real (${!hasSynthetic}), el 'suggestedPriceLocal' debe posicionarse un 2% por debajo de ${minCompPrice} para capturar volumen.
-    2. ESCENARIO DE EXCLUSIVIDAD: Si el competidor es "Aether-Market-Engine" (Sintético: ${hasSynthetic}), tienes un 'Océano Azul'. Optimiza para ROI de 100% a 250%.
+  ### 1. DATA ECONÓMICA (INPUT):
+  - Costo de Adquisición Total (Landing + Envío Local Absorbido): ${landedCostUsd.toFixed(2)} USD.
+  - Competencia Local Mínima detectada: ${minCompPrice || 'N/A'}.
+  - Impuestos Aplicables (IVA/VAT): ${taxRate}%.
+  - Comisión de Pasarela de Pagos (Estimada): 5%.
 
-    LÓGICA DE DECISIÓN (WINNER):
-    - MARCAR COMO TRUE SOLO SI:
-      - ROI Final > 30% tras impuestos y comisiones.
-      - Margen Neto > $6 USD (Este es tu presupuesto de marketing).
+  ### 2. PROTOCOLO DE PRICING ESTRATÉGICO:
+  - ESCENARIO COMPETITIVO: Si existe competencia real (${!hasSynthetic}), el 'suggestedPriceLocal' debe posicionarse un 2% por debajo del precio mínimo de la competencia para capturar volumen de mercado rápidamente.
+  - ESCENARIO DE EXCLUSIVIDAD: Si el competidor es "Aether-Market-Engine" (Sintético: ${hasSynthetic}), estás ante un 'Océano Azul'. Optimiza el precio para obtener un ROI de entre el 100% y el 250% según la utilidad percibida.
 
-    ... (Resto de las reglas de Copywriting) ...
-  `;
+  ### 3. LÓGICA DE DECISIÓN (WINNER):
+  - MARCAR "isWinner" COMO TRUE SOLO SI:
+    - El ROI Final es > 30% tras descontar impuestos y comisiones.
+    - El Margen Neto es > $6.00 USD (Este es el presupuesto mínimo requerido para Customer Acquisition Cost / Facebook Ads).
+
+  ### 4. REGLAS DE COPYWRITING (AIDA):
+  - TÍTULO: Máximo 60 caracteres, enfocado en el beneficio principal y SEO.
+  - HOOK: Una frase disruptiva que detenga el scroll.
+  - BENEFICIOS: Lista de 3 puntos clave enfocados en la transformación del usuario, no en características técnicas.
+  - DESCRIPCIÓN: Máximo 300 caracteres persuasivos con un Call to Action (CTA) implícito.
+
+  ### 5. PROTOCOLO DE SALIDA (JSON ESTRICTO):
+  Debes responder ÚNICAMENTE con un objeto JSON válido. No incluyas introducciones ni conclusiones.
+  
+  Estructura requerida:
+  {
+    "isWinner": boolean,
+    "analysis": {
+      "suggestedPriceLocal": number,
+      "estimatedRoi": number,
+      "netMarginUsd": number,
+      "reasoning": "Breve explicación del porqué de la decisión financiera"
+    },
+    "copywriting": {
+      "title_es": "string",
+      "hook": "string",
+      "benefits": ["string", "string", "string"],
+      "description": "string"
+    }
+  }
+
+  ANÁLISIS ESTRATÉGICO FINALIZADO. ESPERANDO OBJETO JSON:
+`;
 
   try {
     const result = await this.model.generateContent(prompt);

@@ -20,7 +20,7 @@ export class CompetitorService {
     try {
       if (!query) throw new Error("CompetitorService: Query vacía.");
       
-      const targetLang = targetCountry === 'CL' ? 'Español' : 'Inglés';
+      // const targetLang = targetCountry === 'CL' ? 'Español' : 'Inglés';
       const safeQuery = query || "Producto Genérico";
       const shortTitle = safeQuery.split(' ').slice(0, 5).join(' ');
 
