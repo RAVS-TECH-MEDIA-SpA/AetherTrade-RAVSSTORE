@@ -2,22 +2,27 @@ import { Router } from 'express';
 import { 
   getDashboardStats, 
   getInventory, 
+  getProductById, 
   triggerAnalysis 
 } from './controllers/dashboard.controller';
 
 const router = Router();
 
 /**
- * Endpoints del Dashboard
+ * RUTAS DEL DASHBOARD & LANDING
  */
 
-// 1. Resumen de KPIs y Gráficos
+// Obtener estadísticas generales (Cards superiores)
 router.get('/stats/summary', getDashboardStats);
 
-// 2. Lista completa de productos
+// Obtener lista de productos para el inventario
 router.get('/inventory', getInventory);
 
-// 3. Disparo de análisis masivo (el que configuramos con ';' y limit)
+// FIX: Ruta para el modal de detalle (Solución al Error 405)
+// Esta ruta permite que el frontend haga un GET /api/products/[UUID]
+router.get('/products/:id', getProductById);
+
+// Trigger manual para forzar análisis de un nicho
 router.post('/analyze', triggerAnalysis);
 
 export default router;

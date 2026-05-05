@@ -25,32 +25,49 @@ export class AliExpressService {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
 
-  async searchTrending(niche: string, country: string) {
-    if (!this.apiKey) {
-      console.log("❌ NO HAY API KEY DE RAPIDAPI CONFIGURADA.");
-      return [];
-    }
+  // En AliExpressService.ts
+
+async searchTrending(niche: string, country: string, maxPages: number = 1) {
+    if (!this.apiKey) return [];
+    
+    let allRawItems: any[] = [];
     
     try {
-      await this.wait();
-      const options = {
-        method: 'GET',
-        url: `https://${this.host}/item_search_3`,
-        params: { q: niche, page: '1', region: country, sort: 'salesDesc', locale: 'en_US', currency: 'USD' },
-        headers: { 'x-rapidapi-key': this.apiKey, 'x-rapidapi-host': this.host },
-        timeout: 15000
-      };
-
-      console.log(`⏳ Buscando en RapidAPI: "${niche}"...`);
-      const response = await axios.request(options);
-      
-      const rawItems = response.data?.result?.resultList || [];
-      console.log(`📦 RapidAPI devolvió ${rawItems.length} resultados brutos para "${niche}".`);
-
-      return rawItems.map((entry: any) => {
-        const item = entry.item;
-        const isFreeShipping = item.delivery?.freeShipping === true;
+      // Bucle de escaneo para aumentar el buffer de candidatos
+      for (let p = 1; p <= maxPages; p++) {
+        await this.wait();
         
+        const options = {
+          method: 'GET',
+          url: `https://${this.host}/item_search_3`,
+          params: { 
+            q: niche, 
+            page: String(p), // Dinámico: página 1, 2...
+            region: country, 
+            sort: 'salesDesc', 
+            locale: 'en_US', 
+            currency: 'USD' 
+          },
+          headers: { 'x-rapidapi-key': this.apiKey, 'x-rapidapi-host': this.host },
+          timeout: 15000
+        };
+
+        console.log(`⏳ [PAGE ${p}] Escaneando buffer en RapidAPI: "${niche}"...`);
+        const response = await axios.request(options);
+        const pageItems = response.data?.result?.resultList || [];
+        
+        if (pageItems.length === 0) break; // Si no hay más resultados, salimos del bucle
+        
+        allRawItems = [...allRawItems, ...pageItems];
+        
+        // Si ya tenemos suficientes candidatos brutos, no gastamos más créditos de búsqueda
+        if (allRawItems.length >= 40) break; 
+      }
+
+      console.log(`📦 Buffer Expandido: ${allRawItems.length} resultados brutos para "${niche}".`);
+
+      return allRawItems.map((entry: any) => {
+        const item = entry.item;
         return {
           aliexpress_id: item.itemId,
           title: item.title,
@@ -59,15 +76,14 @@ export class AliExpressService {
           sales: item.sales || 0,
           url: this.fixUrl(item.itemUrl),
           imageUrl: this.fixUrl(item.image),
-          freeShipping: isFreeShipping
+          freeShipping: item.delivery?.freeShipping === true
         };
       });
     } catch (error: any) {
-      // AQUÍ ESTÁ LA MAGIA: Nos va a mostrar el error REAL que manda RapidAPI
-      console.error(`🚨 ERROR CRÍTICO EN RAPIDAPI para "${niche}":`, error.response?.data || error.message);
+      console.error(`🚨 ERROR EN SCANNER para "${niche}":`, error.response?.data || error.message);
       return []; 
     }
-  }
+}
 
   async getItemDetail(itemId: string) {
     if (!this.apiKey) return null;

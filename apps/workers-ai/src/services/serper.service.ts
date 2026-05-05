@@ -7,9 +7,11 @@ export class SerperService {
   async getLifestyleImages(query: string): Promise<string[]> {
     if (!this.apiKey) return [];
     try {
+      const cleanQuery = query.split(' ').slice(0, 4).join(' ');
+      
       const response = await axios.post(
         'https://google.serper.dev/images',
-        { q: `${query} lifestyle high resolution`, gl: 'cl' },
+        { q: `${cleanQuery} lifestyle high resolution product photography`, gl: 'us' },
         { headers: { 'X-API-KEY': this.apiKey, 'Content-Type': 'application/json' } }
       );
       return response.data.images?.slice(0, 4).map((img: any) => img.imageUrl) || [];
@@ -19,30 +21,63 @@ export class SerperService {
     }
   }
 
-  // NUEVO: Búsqueda de videos promocionales (Filtra críticas/reviews)
+  // MEJORADO: Búsqueda de videos priorizando YouTube y YouTube Shorts
   async getPromotionalVideo(productTitle: string): Promise<string | null> {
     if (!this.apiKey) return null;
-    try {
     
-      // Lógica que debes tener en el backend (Serper)
-      const query = `${productTitle} official product showcase ad -review -critica -opinión -unboxing -test -failed`;
+    // Paso 1: Sanitización quirúrgica (esencia del producto)
+    const cleanTitle = productTitle.split(' ').slice(0, 6).join(' ');
+
+    try {
+      // Intento 1: Prioridad absoluta a YouTube Shorts (Formato ideal para Dashboard)
+      const primaryQuery = `${cleanTitle} product showcase "shorts" site:youtube.com`;
+      let videoLink = await this.executeVideoSearch(primaryQuery);
+
+      // Paso 2: Fallback 1 - YouTube estándar (Reviews visuales o Demos)
+      if (!videoLink) {
+        const fallbackQuery = `${cleanTitle} official product demo site:youtube.com`;
+        videoLink = await this.executeVideoSearch(fallbackQuery);
+      }
+
+      // Paso 3: Fallback 2 - Búsqueda abierta (TikTok/Instagram) solo si YouTube falla
+      if (!videoLink) {
+        const globalQuery = `${cleanTitle} product commercial ad`;
+        videoLink = await this.executeVideoSearch(globalQuery);
+      }
+
+      return videoLink;
+    } catch (error) {
+      console.error('❌ Error en Serper (Video):', error);
+      return null;
+    }
+  }
+
+  // Helper privado para ejecución y filtrado de calidad
+  private async executeVideoSearch(query: string): Promise<string | null> {
+    try {
       const response = await axios.post(
         'https://google.serper.dev/videos',
-        { q: query, gl: 'us', hl: 'en' }, // 'us' suele tener mejores fuentes comerciales
+        { q: query, gl: 'us', hl: 'en' },
         { headers: { 'X-API-KEY': this.apiKey, 'Content-Type': 'application/json' } }
       );
 
       const videos = response.data.videos || [];
-      
-      // Doble filtro: Buscamos un video cuyo título no contenga palabras prohibidas
-      const adVideo = videos.find((v: any) => {
+      if (videos.length === 0) return null;
+
+      // Filtro de calidad: Priorizamos YouTube y evitamos contenido "ruidoso"
+      const bestVideo = videos.find((v: any) => {
+        const url = v.link.toLowerCase();
         const title = v.title.toLowerCase();
-        return !title.includes('review') && !title.includes('critica') && !title.includes('test');
+        
+        const isYouTube = url.includes('youtube.com') || url.includes('youtu.be');
+        const isNotTrash = !title.includes('review') && !title.includes('failed') && !title.includes('worst');
+        
+        return isYouTube && isNotTrash;
       });
 
-      return adVideo?.link || (videos.length > 0 ? videos[0].link : null);
-    } catch (error) {
-      console.error('❌ Error en Serper (Video):', error);
+      // Si no hay uno de YouTube perfecto, devolvemos el primero de la lista
+      return bestVideo?.link || videos[0].link;
+    } catch {
       return null;
     }
   }

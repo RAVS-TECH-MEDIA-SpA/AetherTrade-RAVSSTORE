@@ -71,7 +71,13 @@ CREATE TABLE products (
         REFERENCES tax_rules(country_code) ON DELETE CASCADE,
     CONSTRAINT unique_product_market UNIQUE (aliexpress_id, target_country)
 );
+ALTER TABLE products ADD COLUMN source TEXT DEFAULT 'AliExpress';
+-- Agregamos la columna faltante para el precio sugerido
+ALTER TABLE products ADD COLUMN IF NOT EXISTS suggested_price NUMERIC(10, 2);
 
+-- Aprovechamos de asegurar que las columnas de desglose de costo existan
+ALTER TABLE products ADD COLUMN IF NOT EXISTS base_cost_usd NUMERIC(10, 2);
+ALTER TABLE products ADD COLUMN IF NOT EXISTS shipping_cost_usd NUMERIC(10, 2);
 -- 5. CACHE DE NICHOS (Discovery History)
 CREATE TABLE niche_cache (
     id SERIAL PRIMARY KEY,

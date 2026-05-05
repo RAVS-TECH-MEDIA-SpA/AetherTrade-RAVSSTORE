@@ -2,6 +2,8 @@ import axios from 'axios';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
+// Importamos la configuración centralizada para mantener la "Single Source of Truth"
+import { MARKET_CONFIG } from '../config/constants.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -18,34 +20,29 @@ interface MarketConfig {
 
 export class ScraperService {
   private apiKey: string;
+  
+  // Mapeo refinado para los mercados de Aether Trade
   private readonly MARKET_MAP: Record<string, MarketConfig> = {
     'CL': {
       currency: '$', 
-      localisms: '("despacho gratis" OR "entrega inmediata" OR "stock" OR "oferta")',
-      keywords: 'precio comprar',
-      sites: ['mercadolibre.cl', 'falabella.com', 'paris.cl', 'lider.cl', 'ripley.cl', 'sodimac.cl'],
-      minValidPrice: 1500
+      localisms: '("despacho gratis" OR "entrega inmediata" OR "envío a regiones" OR "cmr")',
+      keywords: 'precio comprar oferta',
+      sites: ['mercadolibre.cl', 'falabella.com', 'paris.cl', 'lider.cl', 'ripley.cl', 'sodimac.cl', 'knasta.cl'],
+      minValidPrice: 2500 // Evitamos accesorios o repuestos pequeños
     },
     'MX': {
       currency: '$', 
       localisms: '("envío gratis" OR "meses sin intereses" OR "entrega hoy")',
       keywords: 'precio comprar',
       sites: ['mercadolibre.com.mx', 'amazon.com.mx', 'walmart.com.mx', 'coppel.com', 'elektra.mx'],
-      minValidPrice: 50
-    },
-    'ES': {
-      currency: '€',
-      localisms: '("envío 24h" OR "stock" OR "rebajas" OR "comprar")',
-      keywords: 'precio comprar',
-      sites: ['amazon.es', 'elcorteingles.es', 'pccomponentes.com', 'mediamarkt.es', 'carrefour.es'],
-      minValidPrice: 5
+      minValidPrice: 150
     },
     'US': {
       currency: '$',
       localisms: '("free shipping" OR "in stock" OR "buy online")',
       keywords: 'buy price online',
       sites: ['amazon.com', 'walmart.com', 'target.com', 'ebay.com', 'bestbuy.com'],
-      minValidPrice: 5
+      minValidPrice: 10
     }
   };
 
@@ -54,12 +51,12 @@ export class ScraperService {
   }
 
   /**
-   * Purifica el nombre del producto para evitar ruido en Google
+   * Purifica el nombre para evitar que el ruido de AliExpress afecte el SEO en Google
    */
   public cleanProductName(name: string): string {
     if (!name) return "";
     return name
-      .replace(/(202[0-9]|New|Global|Original|Portable|Mini|Hot Sale|Stock|SKU|Piece|Lot|Latest|High Quality|Professional|Official)/gi, '')
+      .replace(/(202[0-9]|New|Global|Original|Portable|Mini|Hot Sale|Stock|SKU|Piece|Lot|Latest|High Quality|Professional|Official|Xiaomi|Apple|Samsung)/gi, '')
       .replace(/[0-9]+x[0-9]+/g, '')
       .replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚ ]/g, '')
       .split(' ')
@@ -70,55 +67,52 @@ export class ScraperService {
   }
 
   /**
-   * NUEVA LÓGICA: Extrae el precio de un texto usando Regex basado en el país
+   * FIX: Extracción de precio robusta para CLP (sin decimales) y USD/MXN (con decimales)
    */
   private parsePrice(text: string, country: string): number {
     if (!text) return 0;
 
-    /**
-     * Regex para Chile (CL): Busca '$' o 'CLP' seguido de números con puntos o comas
-     * El patrón asegura que el número esté vinculado a una moneda.
-     */
+    // Chile no usa decimales en el retail online, el regex debe ser estricto con los puntos de miles
     const priceRegex = country === 'CL' 
-      ? /(?:\$|CLP)\s?([0-9]{1,3}(?:[\.,][0-9]{3})+|[0-9]{2,6})/i 
-      : /(?:\$|USD|€)\s?([0-9]{1,3}(?:[\.,][0-9]{3})*(?:[\.,][0-9]{2})?)/i;
+      ? /(?:\$|CLP)\s?([0-9]{1,3}(?:\.[0-9]{3})+|[0-9]{3,7})/i 
+      : /(?:\$|USD|€|MXN)\s?([0-9]{1,3}(?:,[0-9]{3})*(?:\.[0-9]{2})?)/i;
 
     const match = text.match(priceRegex);
     if (!match) return 0;
 
     let valueStr = match[1];
 
-    // Limpieza específica para Chile (eliminar puntos de miles)
     if (country === 'CL') {
-      valueStr = valueStr.replace(/[\.,]/g, '');
+      valueStr = valueStr.replace(/\./g, ''); // En Chile el punto es separador de miles
     } else {
-      valueStr = valueStr.replace(/,/g, ''); 
+      valueStr = valueStr.replace(/,/g, ''); // En US/MX la coma es separador de miles
     }
 
     const price = parseFloat(valueStr);
     
-    // Validación contra el precio mínimo del mercado configurado
-    const config = this.MARKET_MAP[country] || { minValidPrice: 0 };
-    return (price >= config.minValidPrice) ? price : 0;
+    // Validamos contra el piso configurado en constants o el local
+    const minPrice = MARKET_CONFIG[country as keyof typeof MARKET_CONFIG]?.MIN_PRICE || this.MARKET_MAP[country]?.minValidPrice || 0;
+    return (price >= minPrice) ? price : 0;
   }
 
-  /**
-   * MEJORADO: Construye la query usando localismos y exclusiones
-   */
   private buildQuery(name: string, country: string): string {
     const config = this.MARKET_MAP[country.toUpperCase()] || this.MARKET_MAP['US'];
     const cleanName = this.cleanProductName(name);
-    const exclusions = "-site:aliexpress.com -site:amazon.com/cl";
     
-    // Inyectamos la moneda y los localismos dinámicos del mapa
-    return `${cleanName} ${config.currency} ${config.localisms} ${exclusions}`;
+    // Excluimos sitios chinos y dominios que ensucian el benchmark local
+    const exclusions = "-site:aliexpress.com -site:alibaba.com -site:temu.com -site:shopee.cl";
+    
+    // Forzamos la búsqueda en los sitios líderes del país
+    const sitesQuery = config.sites.map(s => `site:${s}`).join(' OR ');
+    
+    return `${cleanName} (${sitesQuery}) ${config.currency} ${config.localisms} ${exclusions}`;
   }
 
   async getCompetitorPrices(productName: string, country: string) {
     if (!this.apiKey) throw new Error('SERPER_API_KEY missing');
     
-    const query = this.buildQuery(productName, country);
     const countryCode = country.toUpperCase();
+    const query = this.buildQuery(productName, countryCode);
 
     try {
       const { data } = await axios.post('https://google.serper.dev/search', {
@@ -126,31 +120,31 @@ export class ScraperService {
         gl: country.toLowerCase(),
         hl: countryCode === 'US' ? "en" : "es",
         autocorrect: true,
-        num: 20 
+        num: 15 // Reducimos a 15 para mayor precisión y menor latencia
       }, {
         headers: { 'X-API-KEY': this.apiKey, 'Content-Type': 'application/json' }
       });
 
-      // Unificamos Orgánico y Shopping para ampliar la captura de precios
       const organic = data.organic || [];
       const shopping = data.shopping || [];
       const allResults = [...organic, ...shopping];
       
       return allResults
         .map((item: any) => {
-          // Intentamos extraer el precio de múltiples campos donde Google suele volcar la data
+          // Buscamos el precio en el snippet, título o el campo price de Google Shopping
           const rawText = `${item.price || ''} ${item.snippet || ''} ${item.title || ''}`;
           const price = this.parsePrice(rawText, countryCode);
 
           return {
             title: item.title,
             price: price,
-            source: item.source || (item.link ? new URL(item.link).hostname : 'Google'),
+            source: item.source || (item.link ? new URL(item.link).hostname : 'Market'),
             link: item.link,
             isSynthetic: false,
           };
         })
-        .filter(p => p.price > 0); // Solo retornamos resultados con precios detectados
+        .filter(p => p.price > 0)
+        .sort((a, b) => a.price - b.price); // Ordenamos de más barato a más caro
 
     } catch (error: any) {
       console.error(`❌ Error en Serper (Competitors):`, error.message);

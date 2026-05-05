@@ -11,7 +11,14 @@ docker exec -i aether_db psql -U admin_aether -d aethertrade_db < "C:\aether-tra
 
 docker exec -it aether_redis redis-cli flushall
 
+gcloud storage rm --recursive gs://ravstore-media/products/**
 
-landing en landing-next/src npm run dev 
+Resumen de comandos en terminales separadas:
 
-admin angular en admin-angular/src npx ng serve
+npx tsx src/workers/analysis.worker.ts
+
+npx tsx src/workers/discovery.worker.ts
+
+cd apps/api-gateway && npm run dev
+
+cd apps/admin-dashboard && ng serve

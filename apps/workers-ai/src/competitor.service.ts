@@ -2,90 +2,81 @@ import { AliExpressService } from './aliexpress.service.js';
 import { ScraperService } from './services/scraper.service.js';
 import { GeminiService } from './gemini.service.js';
 
+const MAX_MARKUP_FACTOR = 3.0; 
+
 export class CompetitorService {
+  // Eliminamos aliExpress del constructor si no lo usaremos aquí
   constructor(
-    private aliExpress = new AliExpressService(),
-    private scraper = new ScraperService(),
     private gemini = new GeminiService()
   ) {}
 
   async runFullAnalysis(
-    query: string, 
+    originalTitle: string, 
     targetCountry: string, 
     vatRate: number, 
     rateToUsd: number,
-    landedCostUsd: number,    // <-- Nuevo parámetro
-    providedMarketResults: any[] // <-- Nuevo parámetro (inyectado desde el worker)
+    landedCostUsd: number,
+    providedMarketResults: any[],
+    localizedTitle: string 
   ) {
     try {
-      if (!query) throw new Error("CompetitorService: Query vacía.");
-      
-      // const targetLang = targetCountry === 'CL' ? 'Español' : 'Inglés';
-      const safeQuery = query || "Producto Genérico";
-      const shortTitle = safeQuery.split(' ').slice(0, 5).join(' ');
-
-      // 1. Usamos los resultados ya obtenidos o buscamos en AliExpress si es necesario
-      // Nota: Eliminamos la llamada duplicada al scraper aquí porque ya la hizo el worker
-      const aliItems = await this.aliExpress.searchTrending(shortTitle, targetCountry);
+      // 1. Ya no buscamos en AliExpress aquí. Usamos los datos inyectados.
       const marketResults = providedMarketResults; 
-
-      const bestAli = aliItems[0] || { title: shortTitle, price: 0, shippingCost: 0 };
-      const aliData = {
-        title: bestAli.title,
-        price: parseFloat(bestAli.price?.value || bestAli.price || "0"),
-        shipping: parseFloat(bestAli.shipping_value || bestAli.shippingCost || "0")
-      };
-
-      // 2. PRECIO MÍNIMO COMPETENCIA
       const competitorMinPrice = marketResults.length > 0 
         ? Math.min(...marketResults.map((res: any) => Number(res.price) || 0)) 
         : 0;
 
-      // 3. IA: ANÁLISIS FINANCIERO
-      // Pasamos el landedCostUsd (que ya incluye la absorción de envío local)
+      // 2. IA: ANÁLISIS DE ARBITRAJE
+      // Preparamos un objeto dummy para que Gemini no rompa su contrato
+      const aliData = {
+        title: localizedTitle,
+        price: landedCostUsd, // Usamos el costo puesto en destino
+        shipping: 0 // Ya está incluido en landedCost
+      };
+
       const analysis = await this.gemini.analyzeArbitrage(
         aliData, 
         marketResults, 
         targetCountry, 
         vatRate,
-        landedCostUsd
+        landedCostUsd,
+        rateToUsd
       );
 
-      // 4. LÓGICA DE GANADORES Y VEREDICTO
-      // Si hay un competidor sintético o real, permitimos que sea Winner
-      let finalWinner = (competitorMinPrice > 0) ? analysis.isWinner : false;
-      let finalVerdict = (competitorMinPrice === 0) 
-        ? "RECHAZADO: Sin datos de mercado ni motor sintético." 
-        : analysis.verdict;
-      
-      // 5. PROTECCIÓN DE MARGEN "PISO DE MUERTE"
-      let finalPrice = analysis.suggestedPriceLocal;
+      const landedCostLocal = (landedCostUsd * rateToUsd);
+      const absoluteMaxPriceLocal = landedCostLocal * MAX_MARKUP_FACTOR;
 
-      // Costo local real considerando el Landed Cost absorbido
-      const costLocal = landedCostUsd * rateToUsd * (1 + vatRate / 100);
+      // 3. LÓGICA DE PRECIO FINAL
+      let finalPrice = Number(analysis.analysis?.suggestedPriceLocal) || 0;
 
-      // Margen mínimo intocable ($6 USD netos tras absorber todo)
-      const minMarginLocal = 6 * rateToUsd;
-      const absoluteMinPrice = costLocal + minMarginLocal;
-
-      if (competitorMinPrice > 0) {
-        // Tackle al 95% del competidor para ser los más baratos
-        if (finalPrice > competitorMinPrice) {
-          finalPrice = competitorMinPrice * 0.95;
-        }
-        
-        // Si el precio de competencia nos obliga a perder plata, forzamos al mínimo aceptable
-        if (finalPrice < absoluteMinPrice) {
-          finalPrice = absoluteMinPrice;
-          // Si el precio mínimo aceptable es mayor al de la competencia, ya no somos tan "Winners"
-          if (finalPrice > competitorMinPrice) finalWinner = false; 
-        }
-      } else {
-        // Océano Azul: Markup agresivo sobre el costo total absorbido
-        finalPrice = costLocal * 2.2;
+      // Techo de Cordura
+      if (finalPrice > absoluteMaxPriceLocal) {
+        finalPrice = landedCostLocal * 2.2; 
       }
 
-      // 6. REDONDEO PSICOLÓGICO
+      // Piso de Muerte (Costo + IVA + Margen mínimo de ~6 USD)
+      const costWithTaxLocal = landedCostLocal * (1 + vatRate / 100);
+      const minMarginLocal = 5000; // Margen mínimo de $5.000 CLP aprox
+      const absoluteMinPrice = costWithTaxLocal + minMarginLocal;
+
+      let isWinner = analysis.isWinner;
+
+      if (competitorMinPrice > 0) {
+        // Intentamos ser un 5% más baratos que la competencia
+        if (finalPrice > competitorMinPrice) finalPrice = competitorMinPrice * 0.95;
+        
+        // Pero nunca bajamos del Piso de Muerte
+        if (finalPrice < absoluteMinPrice) {
+          finalPrice = absoluteMinPrice;
+          // Si nuestro precio mínimo es más caro que la competencia, NO es ganador
+          if (finalPrice > competitorMinPrice) isWinner = false; 
+        }
+      } else {
+        // Si no hay competencia, aplicamos un margen estándar saludable
+        finalPrice = landedCostLocal * 2.2;
+      }
+
+      // 4. REDONDEO PSICOLÓGICO CHILENO
       if (targetCountry === 'CL') {
         finalPrice = Math.max(990, Math.floor(finalPrice / 1000) * 1000 + 990);
       } else {
@@ -94,11 +85,9 @@ export class CompetitorService {
       
       return {
         ...analysis,
-        isWinner: finalWinner,
-        verdict: finalVerdict,
+        isWinner: isWinner,
         suggestedPriceLocal: finalPrice,
-        competitorMinPrice: competitorMinPrice,
-        aliDetail: bestAli
+        competitorMinPrice: competitorMinPrice
       };
 
     } catch (error: any) {

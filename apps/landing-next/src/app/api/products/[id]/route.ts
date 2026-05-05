@@ -1,10 +1,33 @@
-// apps/landing-next/src/app/api/checkout/products/[id]/route.ts
 import { NextResponse } from 'next/server';
-import { pool } from '@/lib/db'; 
 import { MercadoPagoConfig, Preference } from 'mercadopago';
 
-// Inicializamos el cliente de Mercado Pago
-// Asegúrate de tener MP_ACCESS_TOKEN en tu archivo .env
+import path from 'path';
+import { fileURLToPath } from 'url';
+import dotenv from 'dotenv';
+
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+dotenv.config({ path: path.resolve(__dirname, '../../../../.env') });
+
+export async function GET(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+  const API_URL = process.env.API_GATEWAY_URL;
+
+  try {
+    const res = await fetch(`${API_URL}/api/products/${id}`);
+    if (!res.ok) return NextResponse.json({ error: 'Producto no encontrado' }, { status: 404 });
+    
+    const data = await res.json();
+    return NextResponse.json(data);
+  } catch (error) {
+    return NextResponse.json({ error: 'Error de conexión con API Gateway' }, { status: 500 });
+  }
+}
+
 const client = new MercadoPagoConfig({ 
   accessToken: process.env.MP_ACCESS_TOKEN || '' 
 });
@@ -14,43 +37,29 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // 1. Desenvolver parámetros (Next.js 15) y capturar body
     const { id } = await params;
-    const body = await request.json();
-    const { quantity } = body;
+    const { quantity } = await request.json();
+    const API_URL = process.env.API_GATEWAY_URL;
 
     if (!quantity || quantity < 1) {
       return NextResponse.json({ error: 'Cantidad inválida' }, { status: 400 });
     }
 
-    // 2. Consultar datos reales de la base de datos
-    const query = `
-      SELECT 
-        id, 
-        marketing_copy,        -- Contiene los textos en español/portugués
-        suggested_price_local, -- El precio calculado para el mercado objetivo
-        target_country 
-      FROM products WHERE id = $1
-    `;
-    
-    const dbRes = await pool.query(query, [id]);
-
-    if (!dbRes.rows || dbRes.rows.length === 0) {
-      return NextResponse.json({ error: 'Producto no encontrado en BD' }, { status: 404 });
+    // CONSULTA A API GATEWAY EN LUGAR DE DB DIRECTA
+    const res = await fetch(`${API_URL}/api/products/${id}`);
+    if (!res.ok) {
+      return NextResponse.json({ error: 'Producto no encontrado en Gateway' }, { status: 404 });
     }
 
-    const product = dbRes.rows[0];
+    const product = await res.json();
 
-    // 3. Extraer nombre localizado del JSONB 'marketing_copy'
-    // Asumiendo la estructura: { localizedProductName: "...", ... }
-    const productName = product.marketing_copy?.localizedProductName || 'Producto Aether Trade';
+    // Extraer datos localizados
+    const productName = product.marketing_copy?.title_localized || product.title_original;
     const unitPrice = parseFloat(product.suggested_price_local);
-    const country = product.target_country; // 'CL', 'MX', 'BR'
+    const country = product.target_country; 
 
-    // 4. Configurar moneda según el país de destino
     const currency = country === 'CL' ? 'CLP' : (country === 'MX' ? 'MXN' : 'BRL');
 
-    // 5. Crear la preferencia en Mercado Pago
     const preference = new Preference(client);
 
     const mpResponse = await preference.create({
@@ -70,14 +79,12 @@ export async function POST(
           pending: `${process.env.NEXT_PUBLIC_URL}/pending`,
         },
         auto_return: "approved",
-        // El webhook que procesará la compra y alimentará el Dashboard de Angular
         notification_url: `${process.env.API_WEBHOOK_URL}/webhooks/mercadopago`,
         statement_descriptor: "AETHER TRADE",
-        external_reference: product.id // Para vincularlo en el webhook
+        external_reference: product.id 
       }
     });
 
-    // 6. Retornar el punto de inicio para la redirección
     return NextResponse.json({ init_point: mpResponse.init_point });
 
   } catch (error: any) {

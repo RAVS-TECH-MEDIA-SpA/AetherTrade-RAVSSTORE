@@ -1,18 +1,14 @@
 import express from 'express';
 import cors from 'cors';
-import dashboardRoutes from './routes'; // El archivo que creamos arriba
+import dashboardRoutes from './routes'; // Asegúrate del .js si usas ESM
 
 const app = express();
 
 app.use(cors());
 app.use(express.json());
 
-// IMPORTANTE: Si Angular pide /api/inventory, aquí lo capturamos
+// Aquí capturamos todo lo que venga de la Landing o Angular
 app.use('/api', dashboardRoutes); 
 
-const PORT = 3000;
-app.listen(PORT, () => {
-  console.log(`🚀 API-Gateway corriendo en http://localhost:${PORT}`);
-});
-
+// NO llamar a app.listen aquí. Solo exportar.
 export default app;
