@@ -1,0 +1,143 @@
+<div class="p-8 ml-64 bg-[#0d1117] min-h-screen w-[calc(100%-256px)] flex flex-col gap-6 animate-in fade-in">
+    
+    <div class="bg-[#161b22] border border-[#30363d] rounded-2xl overflow-hidden shadow-2xl">
+        <div class="p-6 border-b border-[#30363d] bg-[#0d1117] flex justify-between items-center">
+            <h2 class="text-xl font-black text-white italic tracking-tighter">
+                <span class="material-icons text-[#00f2ff]">inventory_2</span> 
+                GLOBAL INVENTORY <span class="text-[#8b949e] font-mono text-xs ml-4">[{{products.length}} ITEMS]</span>
+            </h2>
+        </div>
+
+        <table class="w-full text-sm text-left">
+            <thead class="bg-[#0d1117] text-[#8b949e] text-[10px] uppercase font-black tracking-widest border-b border-[#30363d]">
+                <tr>
+                    <th class="px-8 py-5">Product Details</th>
+                    <th class="px-8 py-5">Arbitrage ROI (USD)</th>
+                    <th class="px-8 py-5">Status</th>
+                    <th class="px-8 py-5 text-center">Master Control</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-[#30363d]">
+                <tr *ngFor="let p of products" class="hover:bg-[#1c2128] transition-all group">
+                    <td class="px-8 py-6 flex items-center gap-6">
+                        <div class="w-20 h-20 rounded-2xl border border-[#30363d] bg-black overflow-hidden shadow-lg group-hover:border-[#00f2ff]/50 transition-all">
+                            <img [src]="p.image_url" class="w-full h-full object-cover">
+                        </div>
+                        <div class="flex flex-col gap-1 max-w-xl">
+                            <span (click)="openEditor(p)" class="text-lg font-bold text-white cursor-pointer hover:text-[#00f2ff] leading-tight">
+                                {{ p.name }}
+                            </span>
+                            <span class="text-[10px] font-mono text-[#8b949e] uppercase">SKU: {{ p.aliexpress_id }} | Source: {{ p.source }}</span>
+                        </div>
+                    </td>
+                    <td class="px-8 py-6 font-mono text-white relative" (mouseenter)="hoveredProductId = p.id" (mouseleave)="hoveredProductId = null">
+                        <div class="flex flex-col">
+                            <span class="text-[#3fb950] font-black text-base">+{{ p.roi_percent }}% ROI</span>
+                            <span class="text-[#8b949e] text-xs">${{ p.base_cost_usd | number:'1.2-2' }} Cost</span>
+                        </div>
+                        <div *ngIf="hoveredProductId === p.id" class="absolute left-full top-0 ml-4 z-50 bg-[#1c2128] border border-[#00f2ff] p-4 rounded-xl shadow-2xl w-52 animate-in zoom-in">
+                            <p class="text-[9px] text-[#00f2ff] font-bold uppercase mb-2">Local Market Estimations</p>
+                            <div class="space-y-1 text-xs">
+                                <div class="flex justify-between"><span>CLP:</span> <span class="text-white">{{ formatLocal(p.base_cost_usd, 'CLP') }}</span></div>
+                                <div class="flex justify-between"><span>MXN:</span> <span class="text-white">{{ formatLocal(p.base_cost_usd, 'MXN') }}</span></div>
+                                <div class="flex justify-between"><span>BRL:</span> <span class="text-white">{{ formatLocal(p.base_cost_usd, 'BRL') }}</span></div>
+                            </div>
+                        </div>
+                    </td>
+                    <td class="px-8 py-6">
+                        <span [ngClass]="{
+                            'bg-[#23863626] text-[#3fb950] border-[#23863666]': p.status === 'WINNER',
+                            'bg-[#d2992226] text-[#d29922] border-[#d2992266]': p.status === 'PENDING',
+                            'bg-[#f8514926] text-[#f85149] border-[#f8514966]': p.status === 'REJECTED_IA'
+                        }" class="px-3 py-1 rounded-full text-[10px] border font-black uppercase">
+                            {{ p.status }}
+                        </span>
+                    </td>
+                    <td class="px-8 py-6 text-center">
+                        <div class="flex justify-center items-center gap-5">
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" [checked]="p.status === 'WINNER'" (change)="toggleStatus(p)" class="sr-only peer">
+                                <div class="w-11 h-6 bg-[#30363d] rounded-full peer peer-checked:bg-[#238636] after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-full"></div>
+                            </label>
+                            <button (click)="openEditor(p)" class="material-icons text-[#8b949e] hover:text-white">settings</button>
+                        </div>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div *ngIf="isModalOpen && selectedProduct" class="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/90 backdrop-blur-sm animate-in fade-in duration-300">
+        <div class="bg-[#161b22] border border-[#30363d] w-full max-w-6xl max-h-[95vh] rounded-3xl overflow-hidden flex flex-col shadow-2xl">
+            <div class="p-6 border-b border-[#30363d] bg-[#0d1117] flex justify-between items-center text-white">
+                <h2 class="text-xl font-black italic tracking-tighter">MASTER EDITOR <span class="text-[#00f2ff] ml-3">#{{selectedProduct.aliexpress_id}}</span></h2>
+                <button (click)="isModalOpen=false" class="material-icons text-[#8b949e] hover:text-white">close</button>
+            </div>
+            
+            <div class="flex-1 overflow-y-auto p-10 space-y-10 custom-scrollbar">
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-10">
+                    <div class="space-y-6">
+                        <div>
+                            <label class="text-[10px] font-black uppercase text-[#8b949e] mb-2 block tracking-widest">Localized Title (SEO)</label>
+                            <textarea [(ngModel)]="selectedProduct.name" rows="3" class="w-full bg-[#0d1117] border border-[#30363d] rounded-2xl p-4 text-white focus:border-[#00f2ff] outline-none"></textarea>
+                        </div>
+                        <div>
+                            <label class="text-[10px] font-black uppercase text-[#8b949e] mb-2 block tracking-widest">AI Verdict / Rejection Reason</label>
+                            <textarea [(ngModel)]="selectedProduct.ai_verdict" rows="4" placeholder="Indica la razón de desactivación..." class="w-full bg-[#0d1117] border border-[#30363d] rounded-2xl p-4 text-white outline-none focus:border-[#f85149] italic"></textarea>
+                        </div>
+                    </div>
+                    <div class="space-y-6">
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="text-[10px] font-black uppercase text-[#8b949e] mb-2 block tracking-widest">Image Asset</label>
+                                <img [src]="selectedProduct.image_url" class="w-full h-32 object-cover rounded-xl border border-[#30363d] bg-black">
+                                <input [(ngModel)]="selectedProduct.image_url" class="mt-2 w-full bg-[#0d1117] border border-[#30363d] rounded-lg p-2 text-[10px] text-white">
+                            </div>
+                            <div>
+                                <label class="text-[10px] font-black uppercase text-[#8b949e] mb-2 block tracking-widest">Video Asset URL</label>
+                                <div class="h-32 bg-[#0d1117] border border-[#30363d] rounded-xl flex items-center justify-center">
+                                    <span class="material-icons text-[#8b949e] text-3xl">play_circle</span>
+                                </div>
+                                <input [(ngModel)]="selectedProduct.video_url" placeholder="https://..." class="mt-2 w-full bg-[#0d1117] border border-[#30363d] rounded-lg p-2 text-[10px] text-white">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-10 border-t border-[#30363d] grid grid-cols-2 md:grid-cols-4 gap-6">
+                    <div class="p-4 bg-[#0d1117] rounded-2xl border border-[#30363d]">
+                        <p class="text-[9px] font-black text-[#8b949e] uppercase mb-1">Base Cost (USD)</p>
+                        <p class="text-xl font-mono text-white">${{selectedProduct.base_cost_usd}}</p>
+                    </div>
+                    <div class="p-4 bg-[#0d1117] rounded-2xl border border-[#30363d]">
+                        <p class="text-[9px] font-black text-[#8b949e] uppercase mb-1">Shipping Cost</p>
+                        <p class="text-xl font-mono text-white">${{selectedProduct.shipping_cost_usd}}</p>
+                    </div>
+                    <div class="p-4 bg-[#0d1117] rounded-2xl border border-[#00f2ff]/30">
+                        <p class="text-[9px] font-black text-[#00f2ff] uppercase mb-1">Suggested Price</p>
+                        <p class="text-xl font-mono text-[#00f2ff] font-bold">${{selectedProduct.suggested_price}}</p>
+                    </div>
+                    <div class="p-4 bg-[#0d1117] rounded-2xl border border-[#3fb950]/30">
+                        <p class="text-[9px] font-black text-[#3fb950] uppercase mb-1">Estimated ROI</p>
+                        <p class="text-xl font-mono text-[#3fb950] font-bold">{{selectedProduct.roi_percent}}%</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="p-8 border-t border-[#30363d] bg-[#0d1117] flex justify-between items-center">
+                <div class="flex flex-col gap-1">
+                    <label class="text-[10px] font-black text-[#8b949e] uppercase">Master System Status</label>
+                    <select [(ngModel)]="selectedProduct.status" class="bg-[#161b22] border border-[#30363d] rounded-xl px-4 py-2 text-sm text-white">
+                        <option value="WINNER">WINNER (Habilitado)</option>
+                        <option value="PENDING">PENDING (En Revisión)</option>
+                        <option value="REJECTED_IA">REJECTED_IA (Desactivado)</option>
+                    </select>
+                </div>
+                <div class="flex gap-4">
+                    <button (click)="isModalOpen=false" class="px-8 font-black text-[#8b949e] uppercase text-xs tracking-widest">Discard</button>
+                    <button (click)="saveProduct()" class="bg-[#238636] hover:bg-[#2ea043] px-10 py-3 rounded-2xl text-white font-black shadow-xl uppercase text-xs tracking-widest">Update Master DB</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

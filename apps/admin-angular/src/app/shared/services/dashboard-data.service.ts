@@ -1,10 +1,8 @@
 // apps/admin-angular/src/app/shared/services/dashboard-data.service.ts
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable } from 'rxjs';
-import { map } from 'rxjs/operators';
+import { Observable, map } from 'rxjs';
 import { ChartData } from 'chart.js';
-
 import { environment } from '../../../environments/environment';
 
 export interface KpiCard {
@@ -13,87 +11,90 @@ export interface KpiCard {
   trend: number;
   icon: string;
 }
-
 export interface WinningProduct {
   id: string;
-  name: string;
+  aliexpress_id: string;
+  name: string; // Mapeado desde marketing_copy.hook
+  title_original: string;
   source: string;
-  asin_sku: string;
-  margin: number;
-  sales_30d: number;
-  status: string;
+  status: 'WINNER' | 'PENDING' | 'REJECTED_IA';
+  
+  // Finanzas puras (USD)
+  base_cost_usd: number;
+  shipping_cost_usd: number;
+  net_margin_usd: number;
+  suggested_price: number;
+  roi_percent: number;
+  
+  // Referencia Local
+  suggested_price_local: number; // Para tus precios en CLP
+  
+  // IA y Marketing
+  marketing_copy: {
+    hook: string;
+    benefits: string[];
+  };
+  ai_verdict: string;
+  
+  // Métricas y Media
+  sales_count: number;
+  rating: number;
   image_url: string;
-  ai_verdict?: string; // Para el despliegue moderno con Tooltip
-  roi_percent?: number;
-  sales_count?: number;
+  local_images: string[]; // Tus assets en GCS
+  video_url?: string;
 }
 
-interface SummaryResponse {
-  kpis: KpiCard[];
-  countrySales: ChartData<'bar'>;
-}
-
-@Injectable({
-  providedIn: 'root'
-})
+@Injectable({ providedIn: 'root' })
 export class DashboardDataService {
-  private apiUrl = environment.apiUrl; 
+  private apiUrl = environment.apiUrl;
 
-  constructor(private http: HttpClient) { } 
+  constructor(private http: HttpClient) { }
 
-  getSummary(): Observable<SummaryResponse> {
-    return this.http.get<SummaryResponse>(`${this.apiUrl}/api/stats/summary`);
+  getSummary(): Observable<any> {
+    return this.http.get<any>(`${this.apiUrl}/api/stats/summary`);
   }
 
   getInventory(): Observable<WinningProduct[]> {
-    return this.http.get<any[]>(`${this.apiUrl}/api/inventory`).pipe(
-      map(products => products.map(p => ({
-        ...p,
-        name: p.marketing_copy?.title_localized || p.title_original,
-        asin_sku: p.aliexpress_id,
-        margin: p.roi_percent || 0,
-        sales_30d: p.sales_count || 0,
-        status: p.status,
-        ai_verdict: p.ai_verdict // Mapeo del veredicto analizado por la IA
-      })))
-    );
+  return this.http.get<any[]>(`${this.apiUrl}/api/inventory`).pipe(
+    map(products => products.map(p => ({
+      ...p,
+      // Usamos el 'hook' como nombre principal para el listado
+      name: p.marketing_copy?.hook || p.title_original,
+      // Aseguramos el tipado numérico para cálculos de JS
+      base_cost_usd: Number(p.base_cost_usd),
+      shipping_cost_usd: Number(p.shipping_cost_usd),
+      net_margin_usd: Number(p.net_margin_usd),
+      suggested_price: Number(p.suggested_price),
+      roi_percent: Number(p.roi_percent),
+      suggested_price_local: Number(p.suggested_price_local)
+    })))
+  );
+}
+
+  updateProduct(id: string, data: Partial<WinningProduct>): Observable<any> {
+    return this.http.put(`${this.apiUrl}/api/inventory/${id}`, data);
   }
 
-  /**
-   * Dispara el análisis manual/auto sincronizado con la V3.4 del Gateway
-   * @param niche - String de nichos separados por punto y coma (ej: "gaming; fitness")
-   * @param country - Código de país (ej: "CL")
-   * @param nicheLimit - Cantidad de nichos (Amplitud)
-   * @param eliteLimit - Cantidad de ganadores por nicho (Profundidad)
-   */
-  triggerManualAnalysis(
-    niche: string, 
-    country: string, 
-    nicheLimit: number, 
-    eliteLimit: number
-  ): Observable<any> {
-    // Enviamos el payload exacto que el triggerAnalysis del Gateway espera procesar
+  triggerManualAnalysis(niche: string, country: string, nLimit: number, eLimit: number): Observable<any> {
     return this.http.post(`${this.apiUrl}/api/analyze`, { 
       niches: niche, 
       country, 
-      nicheLimit, 
-      eliteLimit 
+      nicheLimit: nLimit, 
+      eliteLimit: eLimit 
     });
   }
 
   getTrendsTimeline(): ChartData<'line'> {
     return {
       labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
-      datasets: [
-        {
-          label: 'Smart Home',
-          data: [5, 12, 8, 20, 15, 25],
-          borderColor: '#00f2ff',
-          tension: 0.4,
-          fill: true,
-          backgroundColor: 'rgba(0, 242, 255, 0.1)'
-        }
-      ]
+      datasets: [{
+        label: 'Discovery Velocity',
+        data: [10, 25, 45, 30, 60, 77],
+        borderColor: '#00f2ff',
+        backgroundColor: 'rgba(0, 242, 255, 0.1)',
+        fill: true,
+        tension: 0.4
+      }]
     };
   }
 }

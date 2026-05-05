@@ -54,7 +54,7 @@ export default function Navbar({ countryCode = 'CL' }: NavbarProps) {
           </div>
           <div className="flex flex-col -space-y-1">
             <span className="text-xl font-black tracking-tighter text-white uppercase italic">
-              RAV<span className="text-violet-500">STORE</span>
+              RAVS<span className="text-violet-500">STORE</span>
             </span>
             
             <div className="flex items-center gap-2">

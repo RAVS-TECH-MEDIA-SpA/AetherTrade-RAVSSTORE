@@ -18,14 +18,14 @@ interface NavItem {
 export class SidebarComponent {
   
   // Estructura del menú basada en la maqueta Aether Dashboard 2026
-  navItems: NavItem[] = [
-    { icon: 'insert_chart', label: 'Analytics', route: '/dashboard' },
-    { icon: 'inventory_2', label: 'Inventory', route: '/inventory' },
-    { icon: 'query_stats', label: 'Trends', route: '/trends' },
-    { icon: 'group', label: 'Team', route: '/team' },
-    { icon: 'settings', label: 'Settings', route: '/settings' },
-    { icon: 'help_outline', label: 'Help', route: '/help' }
-  ];
+ // apps/admin-angular/src/app/shared/components/sidebar/sidebar.component.ts
+navItems: NavItem[] = [
+  { icon: 'dashboard', label: 'Dashboard', route: '/dashboard' },
+  { icon: 'rocket_launch', label: 'Scouting', route: '/scouting' }, // El "Corazón" de la búsqueda
+  { icon: 'inventory_2', label: 'Inventory', route: '/inventory' }, // Los 77 productos actuales
+  { icon: 'query_stats', label: 'Trends', route: '/trends' },
+  { icon: 'settings', label: 'Settings', route: '/settings' }
+];
 
   // Datos del perfil (pueden venir de un Auth Service luego)
   userName = 'Rodrigo Vargas Sanhueza';

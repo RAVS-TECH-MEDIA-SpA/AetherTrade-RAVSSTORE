@@ -1,208 +1,102 @@
-<div class="min-h-screen bg-[#0d1117] text-[#c9d1d9] p-6 ml-64">
+<!-- apps/admin-angular/src/app/pages/dashboard/dashboard.component.html -->
+<div class="min-h-screen bg-[#0d1117] p-8 ml-64 w-[calc(100%-256px)] flex flex-col gap-8 animate-in fade-in duration-700">
     
-    <!-- Header de Búsqueda y Filtros V3.4: Control de Amplitud y Profundidad -->
-    <header class="flex flex-col mb-8 gap-4">
-        <div class="flex justify-between items-center gap-4">
-            <!-- Contenedor de Tags Dinámicos -->
-            <div class="relative flex-1 max-w-xl flex flex-wrap items-center bg-[#161b22] border border-[#30363d] rounded-lg px-3 py-1 gap-2 focus-within:border-[#58a6ff] transition-all">
-                <span class="material-icons text-gray-500 text-sm">search</span>
-                
-                <!-- Lista de Tags (WordPress Style) -->
-                <div *ngFor="let tag of nichosSeleccionados; let i = index" 
-                     class="flex items-center gap-1 bg-[#23863626] text-[#3fb950] border border-[#23863666] px-2 py-0.5 rounded-md text-xs font-bold animate-in fade-in zoom-in duration-200">
-                    {{ tag }}
-                    <span (click)="removerTag(i)" class="material-icons text-[14px] cursor-pointer hover:text-white transition-colors">close</span>
-                </div>
-
-                <!-- Input: Bloqueado por selectedNicheLimit -->
-                <input 
-                    type="text" 
-                    [(ngModel)]="textoInput"
-                    (keyup.enter)="agregarTag($event)"
-                    (keyup.semicolon)="agregarTag($event)"
-                    placeholder="{{ nichosSeleccionados.length === 0 ? 'Busca nichos o deja vacío para IA...' : '' }}" 
-                    class="flex-1 bg-transparent border-none outline-none text-sm text-gray-200 py-1 min-w-[100px]"
-                    [disabled]="nichosSeleccionados.length >= selectedNicheLimit">
-                
-                <!-- Contador visual de amplitud -->
-                <span *ngIf="nichosSeleccionados.length > 0" class="text-[9px] text-gray-600 font-black uppercase absolute -bottom-5 left-0">
-                    Amplitud: {{ nichosSeleccionados.length }} / {{ selectedNicheLimit }} NICHOS
-                </span>
-            </div>
-
-            <div class="flex items-center gap-3">
-                <!-- Selector de Amplitud (Nichos) -->
-                <div class="flex flex-col gap-1">
-                    <label class="text-[9px] text-gray-500 font-black uppercase tracking-widest">Nichos</label>
-                    <select 
-                        [(ngModel)]="selectedNicheLimit"
-                        (change)="ajustarTagsAlLimite()"
-                        class="bg-[#161b22] border border-[#30363d] rounded-lg px-2 py-1.5 text-xs text-gray-300 focus:outline-none focus:border-[#58a6ff] cursor-pointer">
-                        <option *ngFor="let n of [1,2,3,4,5,10,15,20]" [value]="n">{{ n }} Nichos</option>
-                    </select>
-                </div>
-
-                <!-- Selector de Profundidad (Ganadores) -->
-                <div class="flex flex-col gap-1">
-                    <label class="text-[9px] text-gray-500 font-black uppercase tracking-widest">Profundidad</label>
-                    <select 
-                        [(ngModel)]="selectedEliteLimit"
-                        (change)="onParamChange()"
-                        class="bg-[#161b22] border border-[#30363d] rounded-lg px-2 py-1.5 text-xs text-gray-300 focus:outline-none focus:border-[#58a6ff] cursor-pointer">
-                        <option [value]="1">Top 1</option>
-                        <option [value]="2">Top 2</option>
-                        <option [value]="3">Top 3</option>
-                        <option [value]="4">Top 4</option>
-                        <option [value]="5">Top 5</option>
-                        <option [value]="10">Top 10</option>
-                        <option [value]="20">Top 20</option>
-                        <option [value]="50">Top 50</option>
-                    </select>
-                </div>
-
-                <button (click)="onNewAnalysis()" [disabled]="isAnalyzing || totalEstimatedCredits > 100" 
-                        class="bg-[#238636] hover:bg-[#2ea043] disabled:bg-gray-700 text-white px-6 py-2 rounded-lg font-semibold flex items-center gap-2 transition-all shadow-lg active:scale-95 h-[38px] self-end">
-                    <span class="text-sm">{{ isAnalyzing ? 'Analyzing...' : 'New Analysis' }}</span>
-                    <span class="material-icons text-sm" [ngClass]="{'animate-spin': isAnalyzing}">{{ isAnalyzing ? 'sync' : 'bolt' }}</span>
-                </button>
-            </div>
+    <!-- Professional Header -->
+    <header class="flex justify-between items-end">
+        <div>
+            <h1 class="text-3xl font-black text-white tracking-tighter italic uppercase">
+                Cockpit <span class="text-[#00f2ff]">Intelligence</span>
+            </h1>
+            <p class="text-[#8b949e] text-sm font-medium">
+                Análisis de arbitraje basado en {{ kpis[2]?.value }} activos de inventario registrados.
+            </p>
         </div>
-
-        <!-- MONITOR DE CUOTA PRO: Barra de riesgo dinámica -->
-        <div class="w-full max-w-xl bg-[#161b22] rounded-full h-1.5 mt-2 relative group cursor-help">
-            <div class="h-full rounded-full transition-all duration-500"
-                 [ngClass]="{
-                    'bg-[#3fb950]': totalEstimatedCredits <= 60,
-                    'bg-[#d29922]': totalEstimatedCredits > 60 && totalEstimatedCredits <= 90,
-                    'bg-[#f85149]': totalEstimatedCredits > 90
-                 }"
-                 [style.width.%]="totalEstimatedCredits > 100 ? 100 : totalEstimatedCredits">
+        <div class="flex gap-2 bg-[#161b22] p-1 rounded-xl border border-[#30363d]">
+            <div class="px-4 py-1.5 text-[10px] font-black text-[#3fb950] bg-[#23863620] rounded-lg flex items-center gap-2">
+                <span class="w-2 h-2 bg-[#3fb950] rounded-full animate-pulse"></span>
+                SYSTEM ONLINE
             </div>
-            <span class="absolute -top-5 right-0 text-[10px] font-bold" 
-                  [ngClass]="totalEstimatedCredits > 100 ? 'text-[#f85149]' : 'text-gray-500'">
-                Consumo estimado: {{ totalEstimatedCredits }} / 100 Créditos (Pro Plan)
-            </span>
         </div>
     </header>
 
-    <!-- Resumen de KPIs -->
-    <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-        <div *ngFor="let card of kpiCards" class="bg-[#161b22] border border-[#30363d] p-5 rounded-xl hover:border-[#8b949e] transition-all cursor-default">
-            <div class="flex justify-between items-start mb-3">
-                <span class="text-[#8b949e] text-sm font-semibold uppercase tracking-wider">{{ card.title }}</span>
-                <span class="material-icons text-[#8b949e] text-lg">{{ card.icon }}</span>
+    <!-- KPI Grid (USD Based) -->
+    <!-- KPI Grid actualizado para 5 columnas -->
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">
+    <div *ngFor="let card of kpis" class="bg-[#161b22] border border-[#30363d] p-6 rounded-2xl relative overflow-hidden group hover:border-[#00f2ff]/30 transition-all duration-300">
+        
+        <div class="flex justify-between items-start mb-6">
+            <div class="p-2.5 bg-[#0d1117] rounded-xl border border-[#30363d] flex items-center justify-center">
+                <span class="material-icons text-[#00f2ff] text-xl">{{ card.icon }}</span>
             </div>
-            <div class="flex items-baseline gap-3">
-                <h3 class="text-2xl font-bold text-white tracking-tight">{{ card.value }}</h3>
-                <span [ngClass]="card.trend > 0 ? 'text-[#3fb950]' : 'text-[#f85149]'" class="text-xs font-bold flex items-center gap-0.5">
-                    {{ card.trend > 0 ? '▲' : '▼' }} {{ card.trend }}%
-                </span>
+            
+            <div *ngIf="card.trend" class="flex items-center gap-1 text-[10px] font-black text-[#3fb950] bg-[#23863620] px-2.5 py-1 rounded-lg border border-[#23863640]">
+                <span class="material-icons text-[12px]">trending_up</span>
+                {{ card.trend }}%
             </div>
         </div>
-    </div>
 
-    <!-- Tabla de Inventario Global -->
-    <div class="bg-[#161b22] border border-[#30363d] rounded-xl overflow-hidden mb-8 shadow-2xl">
-        <div class="p-5 border-b border-[#30363d] flex justify-between items-center bg-[#0d1117]">
-            <h2 class="text-lg font-bold text-white flex items-center gap-2">
-                <span class="material-icons text-teal-400">inventory_2</span> Global Inventory
-            </h2>
-            <div class="flex gap-3">
-                <span class="text-xs text-[#8b949e] self-center">1-20 of {{ topProducts.length }}</span>
-                <div class="flex border border-[#30363d] rounded">
-                    <button class="px-3 py-1 text-xs hover:bg-[#30363d] border-r border-[#30363d]">Prev</button>
-                    <button class="bg-[#21262d] px-3 py-1 text-xs hover:bg-[#30363d]">Next</button>
+        <div class="space-y-1 relative z-10">
+            <p class="text-[10px] font-bold text-[#8b949e] uppercase tracking-[0.15em] mb-1">
+                {{ card.title }}
+            </p>
+            <h3 class="text-2xl font-black text-white tracking-tighter">
+                {{ card.value }}
+            </h3>
+        </div>
+
+        <div class="absolute -right-4 -bottom-4 w-24 h-24 bg-[#00f2ff]/5 rounded-full blur-3xl group-hover:bg-[#00f2ff]/10 transition-all duration-500"></div>
+    </div>
+</div>
+
+    <!-- Analytics Engine Row -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        
+        <!-- ROI Distribution -->
+        <div class="bg-[#161b22] border border-[#30363d] p-8 rounded-3xl lg:col-span-1 h-[450px] flex flex-col shadow-2xl">
+            <h4 class="text-xs font-black text-[#8b949e] uppercase tracking-widest mb-8 flex items-center gap-2">
+                <span class="w-2 h-2 bg-[#00f2ff] rounded-full"></span> Arbitrage Quality Index
+            </h4>
+            <div class="flex-1 relative">
+                <canvas *ngIf="qualityData" baseChart 
+                        [data]="qualityData" 
+                        [type]="'doughnut'" 
+                        [options]="donutOptions">
+                </canvas>
+                <!-- Central Label -->
+                <div class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                    <span class="text-[9px] font-bold text-[#8b949e] uppercase">Global Efficiency</span>
+                    <span class="text-2xl font-black text-white">{{ kpis[3]?.value }}</span>
                 </div>
             </div>
         </div>
-        <table class="w-full text-sm">
-            <thead class="bg-[#0d1117] text-[#8b949e] uppercase text-[10px] font-bold tracking-widest">
-                <tr>
-                    <th class="px-6 py-4 text-left">Product</th>
-                    <th class="px-6 py-4 text-left">Source</th>
-                    <th (click)="toggleSort('margin')" class="px-6 py-4 text-left cursor-pointer hover:text-white transition-colors">
-                        Margin (%) <span *ngIf="sortColumn === 'margin'">{{ isAsc ? '↑' : '↓' }}</span>
-                    </th>
-                    <th (click)="toggleSort('sales_30d')" class="px-6 py-4 text-left cursor-pointer hover:text-white transition-colors">
-                        Sales (30d) <span *ngIf="sortColumn === 'sales_30d'">{{ isAsc ? '↑' : '↓' }}</span>
-                    </th>
-                    <th (click)="toggleSort('status')" class="px-6 py-4 text-left cursor-pointer hover:text-white transition-colors">
-                        Status <span *ngIf="sortColumn === 'status'">{{ isAsc ? '↑' : '↓' }}</span>
-                    </th>
-                    <th class="px-6 py-4 text-center">Actions</th>
-                </tr>
-            </thead>
-            <tbody class="divide-y divide-[#30363d]">
-                <tr *ngFor="let product of topProducts" class="hover:bg-[#1c2128] transition-colors group">
-                    <td class="px-6 py-4 flex items-center gap-3">
-                        <div class="w-10 h-10 rounded bg-[#0d1117] flex-shrink-0 overflow-hidden border border-[#30363d]">
-                            <img [src]="product.image_url" class="w-full h-full object-cover" onerror="this.src='https://placehold.co/100x100/161b22/8b949e?text=?'">
-                        </div>
-                        <span class="font-semibold text-white group-hover:text-teal-400 transition-colors">{{ product.name }}</span>
-                    </td>
-                    <td class="px-6 py-4">
-                        <span class="bg-[#21262d] px-2 py-1 rounded text-[10px] font-mono border border-[#30363d] text-gray-300 uppercase tracking-tighter">
-                            {{ product.source || 'AliExpress' }}
-                        </span>
-                    </td>
-                    <td class="px-6 py-4 font-mono text-[#3fb950] font-bold">{{ product.margin }}%</td>
-                    <td class="px-6 py-4 font-medium">{{ product.sales_30d }}</td>
-                    
-                    <td class="px-6 py-4 relative overflow-visible">
-                        <div class="relative inline-block group/tooltip">
-                            <span [ngClass]="{
-                                'bg-[#23863626] text-[#3fb950] border-[#23863666]': product.status === 'Winner' || product.status === 'WINNER',
-                                'bg-[#d2992226] text-[#d29922] border-[#d2992266]': product.status === 'Pending',
-                                'bg-[#f8514926] text-[#f85149] border-[#f8514966]': product.status.includes('Rejected') || product.status === 'REJECTED_IA'
-                            }" class="px-2 py-1 rounded-full text-[10px] border font-black uppercase tracking-tighter cursor-help">
-                                {{ product.status }}
-                            </span>
 
-                            <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 hidden group-hover/tooltip:block w-64 p-4 bg-[#1c2128] border border-[#444c56] rounded-xl shadow-[0_10px_30px_rgba(0,0,0,0.5)] z-[100] backdrop-blur-md animate-in fade-in slide-in-from-bottom-2">
-                                <div class="flex items-center gap-2 mb-2">
-                                    <span class="material-icons text-xs text-violet-400">psychology</span>
-                                    <span class="text-[9px] font-black uppercase tracking-widest text-violet-300">Veredicto IA</span>
-                                </div>
-                                <p class="text-[11px] text-gray-300 leading-relaxed italic">
-                                    {{ product.ai_verdict || 'Análisis de arbitraje óptimo detectado para ' + selectedCountry + '.' }}
-                                </p>
-                                <div class="absolute -bottom-2 left-1/2 -translate-x-1/2 w-4 h-4 bg-[#1c2128] border-r border-b border-[#444c56] rotate-45"></div>
-                            </div>
-                        </div>
-                    </td>
-
-                    <td class="px-6 py-4 text-center">
-                        <div class="flex justify-center items-center gap-4">
-                            <label class="relative inline-flex items-center cursor-pointer">
-                                <input type="checkbox" [checked]="product.status === 'Winner' || product.status === 'WINNER'" (change)="toggleWinner(product)" class="sr-only peer">
-                                <div class="w-9 h-5 bg-[#30363d] rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#238636] transition-colors"></div>
-                            </label>
-                            <span class="material-icons text-base text-[#8b949e] cursor-pointer hover:text-white transition-colors">edit</span>
-                            <span class="material-icons text-base text-[#8b949e] cursor-pointer hover:text-white transition-colors">more_horiz</span>
-                        </div>
-                    </td>
-                </tr>
-            </tbody>
-        </table>
-    </div>
-
-    <!-- Sección de Gráficos -->
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div class="bg-[#161b22] border border-[#30363d] p-6 rounded-xl h-80 shadow-lg">
-            <h4 class="text-sm font-black mb-6 text-[#8b949e] uppercase tracking-widest flex items-center gap-2">
-                <span class="material-icons text-sm">public</span> Sales Analysis by Country
-            </h4>
-            <div class="h-56">
-                <canvas *ngIf="countrySalesData" baseChart [data]="countrySalesData" [options]="barChartOptions" [type]="'bar'"></canvas>
-            </div>
-        </div>
-        <div class="bg-[#161b22] border border-[#30363d] p-6 rounded-xl h-80 shadow-lg">
-            <h4 class="text-sm font-black mb-6 text-[#8b949e] uppercase tracking-widest flex items-center gap-2">
-                <span class="material-icons text-sm">trending_up</span> Trend Scouting Performance
-            </h4>
-            <div class="h-56">
-                <canvas *ngIf="trendsTimelineData" baseChart [data]="trendsTimelineData" [options]="lineChartOptions" [type]="'line'"></canvas>
+        <!-- Scouting Performance -->
+        <div class="bg-[#161b22] border border-[#30363d] p-8 rounded-3xl lg:col-span-2 h-[450px] flex flex-col shadow-2xl">
+            <h4 class="text-xs font-black text-[#8b949e] uppercase tracking-widest mb-8">Discovery Velocity Timeline</h4>
+            <div class="flex-1">
+                <canvas *ngIf="trendsTimelineData" baseChart 
+                        [data]="trendsTimelineData" 
+                        [type]="'line'" 
+                        [options]="chartOptions">
+                </canvas>
             </div>
         </div>
     </div>
+
+    <!-- IA Master Verdict Bar -->
+    <footer class="bg-gradient-to-r from-[#161b22] to-[#0d1117] border-l-4 border-[#00f2ff] p-6 rounded-r-2xl flex items-center justify-between group shadow-lg">
+        <div class="flex items-center gap-5">
+            <div class="w-12 h-12 bg-[#0d1117] rounded-2xl flex items-center justify-center border border-[#30363d] group-hover:border-[#00f2ff] transition-colors">
+                <span class="material-icons text-[#00f2ff] animate-pulse">auto_awesome</span>
+            </div>
+            <div>
+                <p class="text-xs font-black text-white uppercase tracking-tighter mb-1">Aether-Core Master Verdict</p>
+                <p class="text-sm text-[#8b949e] max-w-4xl">
+                    Basado en el análisis de <strong>{{ kpis[2]?.value }} productos</strong>, el inventario actual proyecta un beneficio neto de <strong>{{ kpis[0]?.value }}</strong>. Se detectó un escenario de <strong>Océano Azul</strong> en nichos de tecnología debido a la nula competencia local.
+                </p>
+            </div>
+        </div>
+        <span class="material-icons text-[#30363d] group-hover:text-[#00f2ff] transition-all cursor-pointer">arrow_forward</span>
+    </footer>
+
 </div>
