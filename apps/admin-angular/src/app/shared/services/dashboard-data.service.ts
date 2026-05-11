@@ -11,37 +11,32 @@ export interface KpiCard {
   trend: number;
   icon: string;
 }
+// apps/admin-angular/src/app/shared/services/dashboard-data.service.ts
+
+// En shared/services/dashboard-data.service.ts
+
 export interface WinningProduct {
   id: string;
   aliexpress_id: string;
-  name: string; // Mapeado desde marketing_copy.hook
-  title_original: string;
+  name: string;
+  status: string; // O puedes usar: 'WINNER' | 'PENDING' | 'REJECTED_IA'
   source: string;
-  status: 'WINNER' | 'PENDING' | 'REJECTED_IA';
-  
-  // Finanzas puras (USD)
+  image_url: string;
+  local_images: string[];
+  video_url: string | null; // Permitimos null explícitamente
   base_cost_usd: number;
   shipping_cost_usd: number;
-  net_margin_usd: number;
   suggested_price: number;
+  suggested_price_local: number;
+  net_margin_usd: number;
   roi_percent: number;
-  
-  // Referencia Local
-  suggested_price_local: number; // Para tus precios en CLP
-  
-  // IA y Marketing
-  marketing_copy: {
+  vat_rate: number;      // Agregado
+  rate_to_usd: number;   // Agregado
+  marketing_copy?: {     // Marcado como opcional con ?
     hook: string;
     benefits: string[];
   };
-  ai_verdict: string;
-  
-  // Métricas y Media
-  sales_count: number;
-  rating: number;
-  image_url: string;
-  local_images: string[]; // Tus assets en GCS
-  video_url?: string;
+  ai_verdict?: string;
 }
 
 @Injectable({ providedIn: 'root' })

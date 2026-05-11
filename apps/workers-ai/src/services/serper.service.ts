@@ -21,28 +21,39 @@ export class SerperService {
     }
   }
 
-  // MEJORADO: Búsqueda de videos priorizando YouTube y YouTube Shorts
-  async getPromotionalVideo(productTitle: string): Promise<string | null> {
-    if (!this.apiKey) return null;
-    
-    // Paso 1: Sanitización quirúrgica (esencia del producto)
-    const cleanTitle = productTitle.split(' ').slice(0, 6).join(' ');
+  /**
+ * Obtiene el video promocional siguiendo la jerarquía:
+ * 1. AliExpress Nativo (Máxima fidelidad)
+ * 2. Serper / YouTube (Búsqueda refinada)
+ */
+async getPromotionalVideo(productTitle: string, aliVideoUrl?: string | null): Promise<string | null> {
+    // PASO 1: PRIORIDAD ABSOLUTA - Video de AliExpress
+    if (aliVideoUrl && aliVideoUrl.trim() !== "") {
+      console.log('✅ Usando video nativo de AliExpress.');
+      return aliVideoUrl;
+    }
 
+    if (!this.apiKey) return null;
+
+    // PASO 2: SANITIZACIÓN QUIRÚRGICA
+    // Eliminamos ruido SEO para que la búsqueda sea "limpia"
+    const cleanTitle = this.cleanTitleForVideo(productTitle);
+    
     try {
-      // Intento 1: Prioridad absoluta a YouTube Shorts (Formato ideal para Dashboard)
-      const primaryQuery = `${cleanTitle} product showcase "shorts" site:youtube.com`;
+      console.log(`🔍 Video nativo no encontrado. Buscando en Serper para: "${cleanTitle}"`);
+
+      /**
+       * PASO 3: QUERY DE ALTA INTENCIÓN
+       * Usamos operadores de búsqueda para evitar "basura" (reviews largas, noticias, tutoriales DIY).
+       * Priorizamos Shorts porque el ratio de aspecto es ideal para Dashboards.
+       */
+      const primaryQuery = `"${cleanTitle}" product showcase shorts -review -unboxing`;
       let videoLink = await this.executeVideoSearch(primaryQuery);
 
-      // Paso 2: Fallback 1 - YouTube estándar (Reviews visuales o Demos)
+      // FALLBACK 1: Demo oficial (Si no hay shorts)
       if (!videoLink) {
-        const fallbackQuery = `${cleanTitle} official product demo site:youtube.com`;
+        const fallbackQuery = `official "${cleanTitle}" product feature demo -DIY -how-to`;
         videoLink = await this.executeVideoSearch(fallbackQuery);
-      }
-
-      // Paso 3: Fallback 2 - Búsqueda abierta (TikTok/Instagram) solo si YouTube falla
-      if (!videoLink) {
-        const globalQuery = `${cleanTitle} product commercial ad`;
-        videoLink = await this.executeVideoSearch(globalQuery);
       }
 
       return videoLink;
@@ -52,9 +63,26 @@ export class SerperService {
     }
   }
 
-  // Helper privado para ejecución y filtrado de calidad
+  /**
+   * Limpia el título específicamente para búsquedas de video.
+   * Evita que palabras como "Free Shipping" o "2024" arruinen el algoritmo.
+   */
+  private cleanTitleForVideo(title: string): string {
+    return title
+      .replace(/(202[0-9]|New|Global|Original|Official|AliExpress|Dropshipping|Free Shipping|tituloseo|titulo)/gi, '')
+      .split(' ')
+      .filter(word => word.length > 2)
+      .slice(0, 4) // Reducimos a 4 palabras clave para máxima precisión
+      .join(' ')
+      .trim();
+  }
+
+  /**
+   * Ejecuta la llamada a Serper
+   */
   private async executeVideoSearch(query: string): Promise<string | null> {
-    try {
+
+      try {
       const response = await axios.post(
         'https://google.serper.dev/videos',
         { q: query, gl: 'us', hl: 'en' },
@@ -81,4 +109,5 @@ export class SerperService {
       return null;
     }
   }
+ 
 }

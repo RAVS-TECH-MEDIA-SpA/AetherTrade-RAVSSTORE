@@ -23,86 +23,40 @@ interface Competitor {
 export class GeminiService {
   private genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
   private model = this.genAI.getGenerativeModel({ 
-    model: "gemini-3.1-pro-preview", 
+    model: "gemini-2.5-flash", 
     generationConfig: { 
       responseMimeType: "application/json",
       temperature: 0.8, 
     } 
   });
 
-  async generateDynamicNiches(country: string, limit: number, excludedNiches: string[] = []): Promise<string[]> {
-    const now = new Date();
-    const month = now.toLocaleString('es-CL', { month: 'long' });
-    const seed = now.getTime(); 
-    const config = MARKET_CONFIG[country as keyof typeof MARKET_CONFIG] || MARKET_CONFIG.CL;
-
-    // Preparamos la restricción de memoria si existen nichos previos
-    const exclusionRule = excludedNiches.length > 0 
-      ? `\n        CRITICAL EXCLUSION LIST: Forbidden to suggest any of these previously explored niches: [${excludedNiches.join(', ')}].`
-      : '';
-
-    const prompt = `
-        CONTEXT: Senior Market Intelligence Lead - Cross-border E-commerce Arbitrage.
-        OBJECTIVE: Identify ${limit} high-velocity SEO keywords for ${country} in ${month}.
-        RANDOMNESS SEED: ${seed}.
-        ${exclusionRule}
-
-        STRICT SEARCH-ENGINE RULES:
-        1. LANGUAGE: Technical English only.
-        2. FORMAT: Pure JSON array of strings.
-        3. NO TITLES: Output must be search keywords, NOT product names.
-        4. NO SPECS: Forbidden to include technical specs (e.g., "200W", "12V", "5L", "Fast Charge").
-        5. WORD LIMIT: Exactly 2 to 3 words per string.
-        6. NO BRANDS: Do not include brand names (e.g., "Xiaomi", "Apple").
-
-        MARKET PARAMETERS (Southern Hemisphere Context):
-        - SEASONALITY: Late Autumn/Winter transition in ${country}. Focus on cold weather, humidity, and home comfort.
-        - PORTFOLIO MIX:
-            * 30% Seasonal (Heating, insulation, winter apparel).
-            * 40% Practical Problem-Solvers (Home maintenance, efficiency).
-            * 30% Viral/Visual Trends (High social media engagement potential).
-        
-        PROFITABILITY FILTER:
-        - Only suggest niches capable of sustaining a Net Margin > $${config.SAFETY_MARGIN.toFixed(2)} USD after shipping to ${country}.
-
-        EXAMPLES OF GOOD KEYWORDS: ["electric foot warmer", "mini dehumidifier", "windproof umbrella", "fleece car cover"].
-        EXAMPLES OF BAD OUTPUT (PROHIBITED): ["Pro Electric Heater 2000W for Home", "12V Heated Car Seat Cover Black"].`;
-
-    try {
-      const result = await this.model.generateContent(prompt);
-      const text = result.response.text();
-      
-      // OPTIMIZACIÓN: Extraemos el contenido entre el primer '[' y el último ']'
-      // Esto ignora cualquier texto explicativo o markdown que Gemini añada por error.
-      const startJson = text.indexOf('[');
-      const endJson = text.lastIndexOf(']') + 1;
-      
-      if (startJson === -1 || endJson === 0) {
-        throw new Error("No se encontró un formato de array válido en la respuesta de la IA.");
-      }
-
-      const jsonString = text.substring(startJson, endJson);
-      return JSON.parse(jsonString);
-
-    } catch (error) {
-      console.error("❌ Error en Discovery IA:", error);
-      // Fallback robusto y contextual para evitar que el proceso se detenga
-      return ["heated insoles", "electric mug warmer", "dehumidifier bags", "winter car cover"];
-    }
-}
+  /**
+   * Traduce una lista de atributos técnicos al idioma destino en un solo bloque.
+   */
+  async translateAttributes(attributes: any[], targetLang: string): Promise<any[]> {
+    const prompt = `Traduce esta lista técnica de productos al ${targetLang}. 
+    Devuelve SOLO un array JSON: [{"name": "traducido", "value": "traducido"}].
+    Lista: ${JSON.stringify(attributes)}`;
+    
+    const result = await this.model.generateContent(prompt);
+    return JSON.parse(result.response.text().replace(/```json|```/g, ""));
+  }
 
   async translateForSearch(title: string, targetLang: string): Promise<string> {
-    const prompt = `
-      TAREA: Refactorizar títulos de productos para SEO de e-commerce.
-      ORIGINAL: ${title}
-      IDIOMA OBJETIVO: ${targetLang}
-      
-      REGLAS:
-      1. Extrae el "Core Entity" del producto (ej: "Proyector", "Humidificador").
-      2. Añade el beneficio principal o característica técnica clave.
-      3. Máximo 4 palabras. Sin adjetivos vacíos ("amazing", "cheap"). Sin marcas.
-      
-      SALIDA: Solo el texto plano purificado en ${targetLang}.`;
+   const prompt = `
+        TAREA: Refactorizar títulos de productos para SEO de e-commerce.
+        ORIGINAL: ${title}
+        IDIOMA OBJETIVO: ${targetLang}
+
+        REGLAS:
+        1. Extrae el "Core Entity" del producto.
+        2. Añade el beneficio principal o característica técnica clave.
+        3. Máximo 4 palabras. Sin adjetivos vacíos ni marcas.
+        
+        FORMATO DE SALIDA: 
+        Entrega únicamente el texto plano del título refactorizado. 
+        Prohibido incluir etiquetas como "tituloseo:", "SALIDA:", o introducciones.
+      `;
     
     try {
       const result = await this.model.generateContent(prompt);
@@ -127,9 +81,13 @@ export class GeminiService {
     // CARGA DE CONFIGURACIÓN DINÁMICA POR PAÍS
     const config = MARKET_CONFIG[targetCountry as keyof typeof MARKET_CONFIG] || MARKET_CONFIG.CL;
     
+    // Extraemos la info para inyectar en el prompt (Limitado para no explotar tokens)
+    const technicalSpecs = JSON.stringify(aliData.properties?.slice(0, 15) || []);
+    const manufacturerDescription = aliData.extended_text ? aliData.extended_text.substring(0, 1500) : 'Sin descripción adicional.';
+
     const prompt = `
-      Actúa como un CFO y Director de Marketing de E-commerce experto en Arbitraje Internacional. 
-      Tu misión es evaluar la viabilidad financiera y crear el material de venta para el producto: "${aliData.title}".
+      Actúa como un CFO y Copywriter de tecnología High-End experto en E-commerce. 
+      Tu misión es evaluar la viabilidad financiera y crear el material de venta premium para el producto: "${aliData.title}".
 
       ### 1. DATA ECONÓMICA (INPUT):
       - Costo de Adquisición Total: ${landedCostUsd.toFixed(2)} USD.
@@ -138,24 +96,26 @@ export class GeminiService {
       - Impuestos Aplicables (IVA/VAT): ${taxRate}%.
       - Comisión de Pasarela de Pagos (Estimada): 5%.
 
-      ### 2. PROTOCOLO DE PRICING ESTRATÉGICO:
+      ### 2. DATA TÉCNICA DEL PRODUCTO (Para tu Copywriting):
+      - Especificaciones: ${technicalSpecs}
+      - Descripción del Fabricante: ${manufacturerDescription}
+
+      ### 3. PROTOCOLO DE PRICING ESTRATÉGICO:
       - ESCENARIO COMPETITIVO: Si existe competencia real (${!hasSynthetic}), el 'suggestedPriceLocal' debe posicionarse un 4% por debajo del precio mínimo de la competencia para capturar volumen de mercado rápidamente.
       - ESCENARIO DE EXCLUSIVIDAD: Si el competidor es "Aether-Market-Engine" (Sintético: ${hasSynthetic}), estás ante un 'Océano Azul'. Optimiza el precio para obtener un ROI de entre el 100% y el 250% según la utilidad percibida.
 
-    
-      ### 3. LÓGICA DE DECISIÓN (WINNER):
+      ### 4. LÓGICA DE DECISIÓN (WINNER):
       - MARCAR "isWinner" COMO TRUE SOLO SI:
         - El ROI Final es > 15% tras descontar impuestos y comisiones (Calcula convirtiendo el Costo USD a ${currency} usando el tipo de cambio ${rateToUsd}).
         - El Margen Neto es > $${config.SAFETY_MARGIN.toFixed(2)} USD.
 
-
-      ### 4. REGLAS DE COPYWRITING (AIDA):
+      ### 5. REGLAS DE COPYWRITING PROFESIONAL (AIDA):
       - TÍTULO: Máximo 60 caracteres, en idioma ${targetCountry === 'CL' ? 'Español' : 'Inglés'}, enfocado en el beneficio principal y SEO.
-      - HOOK: Una frase disruptiva que detenga el scroll en ${targetCountry === 'CL' ? 'Español' : 'Inglés'}.
-      - BENEFICIOS: Lista de 3 puntos clave enfocados en la transformación del usuario.
-      - DESCRIPCIÓN: Máximo 300 caracteres persuasivos con un Call to Action (CTA) implícito.
+      - HOOK: Una frase disruptiva que detenga el scroll.
+      - BENEFICIOS: Lista de 3 a 4 puntos clave, extraídos estrictamente de la Data Técnica del Producto. Transforma características en beneficios de alto valor.
+      - DESCRIPCIÓN: Un párrafo de 4 a 5 líneas, EXTREMADAMENTE DETALLADO y persuasivo, basado en la descripción del fabricante proporcionada. Usa lenguaje técnico, formal pero enfocado en el beneficio. Cero textos genéricos.
 
-      ### 5. PROTOCOLO DE SALIDA (JSON ESTRICTO):
+      ### 6. PROTOCOLO DE SALIDA (JSON ESTRICTO):
       - Debes responder ÚNICAMENTE con un objeto JSON válido. No incluyas introducciones ni conclusiones.
       
       Estructura requerida:
@@ -171,7 +131,7 @@ export class GeminiService {
           "title_localized": "string",
           "hook": "string",
           "benefits": ["string", "string", "string"],
-          "description": "string"
+          "description_localized": "string"
         }
       }
 
@@ -182,6 +142,11 @@ export class GeminiService {
       const cleanJson = result.response.text().replace(/```json|```/g, "").trim();
       const parsed = JSON.parse(cleanJson);
       
+      // Adaptación de nombres si Gemini usa description en lugar de description_localized
+      if(parsed.copywriting && parsed.copywriting.description && !parsed.copywriting.description_localized) {
+        parsed.copywriting.description_localized = parsed.copywriting.description;
+      }
+
       return {
         ...parsed,
         landedCostUsd

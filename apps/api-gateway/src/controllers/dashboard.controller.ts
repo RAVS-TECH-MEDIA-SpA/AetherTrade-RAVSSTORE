@@ -1,17 +1,22 @@
 import { Request, Response } from 'express';
-import axios from 'axios';
 import { pool } from '../database';
-import { PubSub } from '@google-cloud/pubsub'; // Asegúrate de instalarlo en el gateway
+import { PubSub } from '@google-cloud/pubsub';
+// NOTA: Debes copiar estos archivos desde workers-ai a tu carpeta del gateway
+import { GeminiService } from '../services/gemini.service'; 
+
+import { findByAliExpressId } from '../products/products.service';
+import { syncVariantsFromRaw } from '../products/product-sync.service';
 
 const pubsub = new PubSub();
+const gemini = new GeminiService();
+
 /**
- * Obtiene KPIs, Gráfico de Países y Gráfico de Tendencias
+ * Obtiene KPIs, Gráficos y métricas de negocio actualizadas según el Glosario
  */
 export const getDashboardStats = async (req: Request, res: Response) => {
   try {
-    // Consultas paralelas para máxima velocidad
-    const [salesResult, scoutingResult, countryResult, trendsResult] = await Promise.all([
-      // 1. KPIs Financieros
+    const [salesResult, scoutingResult, countryResult, trendsResult, potentialResult] = await Promise.all([
+      // 1. KPIs Financieros (Ventas Reales)
       pool.query(`
         SELECT 
           COALESCE(SUM(amount_usd), 0) as total_revenue,
@@ -19,10 +24,10 @@ export const getDashboardStats = async (req: Request, res: Response) => {
           COUNT(*) as total_sales
         FROM sales_performance
       `),
-      // 2. KPIs de Scouting
+      // 2. KPIs de Scouting (Estado actual)
       pool.query(`
         SELECT 
-          COUNT(*) FILTER (WHERE status = 'Winner') as active_winners,
+          COUNT(*) FILTER (WHERE status = 'WINNER') as active_winners,
           COUNT(*) as total_scouted
         FROM products
       `),
@@ -34,7 +39,7 @@ export const getDashboardStats = async (req: Request, res: Response) => {
         ORDER BY value DESC
         LIMIT 5
       `),
-      // 4. Tendencias (de niche_stats)
+      // 4. Tendencias
       pool.query(`
         SELECT 
           TO_CHAR(recorded_at, 'Mon') as month,
@@ -44,37 +49,52 @@ export const getDashboardStats = async (req: Request, res: Response) => {
         GROUP BY month, recorded_at
         ORDER BY recorded_at ASC
         LIMIT 6
+      `),
+      // 5. NUEVO: Métricas Proyectadas (Según Glosario)
+      pool.query(`
+        SELECT 
+          COALESCE(SUM(net_margin_usd), 0) as potential_profit,
+          COALESCE(AVG(roi_percent), 0) as avg_roi
+        FROM products 
+        WHERE status = 'WINNER'
       `)
     ]);
 
     const stats = salesResult.rows[0];
     const scouting = scoutingResult.rows[0];
+    const potential = potentialResult.rows[0];
 
-    // Estructura de KPIs para los widgets superiores
+    // Estructura de KPIs sincronizada con el Dashboard
     const kpis = [
       { 
-        title: 'Total Revenue', 
-        value: `$${Number(stats.total_revenue).toLocaleString()}`, 
-        trend: 0, 
+        title: 'Potential Net Profit', 
+        value: `$${Number(potential.potential_profit).toLocaleString()}`, 
+        trend: 15, 
         icon: 'payments' 
       },
       { 
-        title: 'Net Profit', 
-        value: `$${Number(stats.total_profit).toLocaleString()}`, 
-        trend: 0, 
-        icon: 'trending_up' 
-      },
-      { 
-        title: 'Active Winners', 
+        title: 'Market Winners', 
         value: scouting.active_winners.toString(), 
-        trend: 0, 
-        icon: 'star' 
+        trend: 5, 
+        icon: 'military_tech' 
       },
       { 
-        title: 'Products Scouted', 
+        title: 'Items Scanned', 
         value: scouting.total_scouted.toString(), 
         trend: 0, 
-        icon: 'search' 
+        icon: 'database' 
+      },
+      { 
+        title: 'Global Avg. ROI', 
+        value: `${Number(potential.avg_roi).toFixed(1)}%`, 
+        trend: 8, 
+        icon: 'insights' 
+      },
+      { 
+        title: 'Meta Ads Budget (Est.)', 
+        value: `$${(Number(potential.potential_profit) * 0.2).toLocaleString()}`, 
+        trend: 12, 
+        icon: 'campaign' 
       }
     ];
 
@@ -102,31 +122,35 @@ export const getDashboardStats = async (req: Request, res: Response) => {
 };
 
 /**
- * Inventario con mapeo de columnas reales (title_original, roi_percent, etc.)
+ * Inventario con JOINS para resolver el problema del VAT y rate_to_usd
  */
 export const getInventory = async (req: Request, res: Response) => {
   try {
     const { status, country } = req.query;
     
-    let query = `SELECT * FROM products WHERE 1=1`;
+    // Mejorado con LEFT JOIN para traer reglas fiscales y de cambio
+    let query = `
+      SELECT p.*, t.vat_rate, er.rate_to_usd 
+      FROM products p
+      LEFT JOIN tax_rules t ON p.target_country = t.country_code
+      LEFT JOIN exchange_rates er ON t.currency_code = er.currency_code
+      WHERE 1=1
+    `;
     const params = [];
 
     if (status) {
       params.push(status);
-      query += ` AND status = $${params.length}`;
+      query += ` AND p.status = $${params.length}`;
     }
 
     if (country) {
       params.push(country);
-      query += ` AND target_country = $${params.length}`;
+      query += ` AND p.target_country = $${params.length}`;
     }
 
-    query += ` ORDER BY updated_at DESC LIMIT 100`;
+    query += ` ORDER BY p.updated_at DESC LIMIT 100`;
     
     const result = await pool.query(query, params);
-    
-    // IMPORTANTE: Aquí devolvemos la fila tal cual está en la DB
-    // para que la landing tenga acceso a marketing_copy, local_images, etc.
     res.json(result.rows);
   } catch (error: any) {
     console.error('🚨 Error en getInventory:', error);
@@ -134,81 +158,173 @@ export const getInventory = async (req: Request, res: Response) => {
   }
 };
 
-/**
- * Obtiene el detalle completo de un producto por su ID (UUID)
- * Solución al Error 405 y fuente de datos para el Modal de la Landing
- */
-export const getProductById = async (req: Request, res: Response) => {
-  const { id } = req.params;
-  try {
-    const result = await pool.query(
-      `SELECT * FROM products WHERE id = $1 LIMIT 1`, 
-      [id]
-    );
 
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Producto no encontrado' });
+
+export const getProductById = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const product = await findByAliExpressId(id as string);
+
+    if (!product) {
+      return res.status(404).json({ message: 'Producto no encontrado' });
+    }
+        
+    // Si el producto no tiene variantes procesadas, las sincronizamos al vuelo
+    if (!product.variants || product.variants.length === 0) {
+      await syncVariantsFromRaw(product.id, product.raw_details);
+      // Volvemos a buscar para devolver la data actualizada
+      const updatedProduct = await findByAliExpressId(id as string);
+      return res.json(updatedProduct);
     }
 
-    // Retornamos la fila completa, incluyendo el JSONB marketing_copy
-    res.json(result.rows[0]);
-  } catch (error) {
-    console.error(`🚨 Error en getProductById (${id}):`, error);
-    res.status(500).json({ error: 'Error al obtener el detalle del producto' });
+    res.json(product);
+  } catch (error: any) {
+    console.error("Error en Gateway:", error.message);
+    res.status(500).json({ error: error.message });
   }
 };
 
 /**
- * Trigger al Worker AI con soporte para múltiples nichos y límite de sugerencias
+ * UPDATE: El endpoint que soluciona el Error 404 al presionar "Update Master DB"
  */
-
-export const triggerAnalysis = async (req: Request, res: Response) => {
-  const { niches, country, nicheLimit, eliteLimit } = req.body; 
-  const TOPIC_NAME = 'discovery-tasks'; // El tópico que creamos en gcloud
+export const updateProduct = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const {
+    status,
+    suggested_price_local,
+    suggested_price,
+    net_margin_usd,
+    roi_percent,
+    marketing_copy,
+    ai_verdict,
+    local_images,
+    video_url,
+    name
+  } = req.body;
 
   try {
-    // 1. Procesamos la lista manual
-    const nicheList = String(niches || '')
+    const query = `
+      UPDATE products SET 
+        status = $1, 
+        suggested_price_local = $2, 
+        suggested_price = $3,
+        net_margin_usd = $4, 
+        roi_percent = $5,
+        marketing_copy = $6, 
+        ai_verdict = $7, 
+        local_images = $8, 
+        video_url = $9,
+        title_original = COALESCE($10, title_original),
+        updated_at = NOW()
+      WHERE id = $11
+      RETURNING *;
+    `;
+
+    const values = [
+      status, 
+      suggested_price_local, 
+      suggested_price, 
+      net_margin_usd, 
+      roi_percent, 
+      JSON.stringify(marketing_copy), 
+      ai_verdict, 
+      JSON.stringify(local_images), 
+      video_url, 
+      name,
+      id
+    ];
+
+    const result = await pool.query(query, values);
+    
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: "Product not found" });
+    }
+    
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error(`🚨 Error actualizando producto ${id}:`, error);
+    res.status(500).json({ error: 'Error interno al actualizar producto' });
+  }
+};
+
+/**
+ * Trigger al Worker AI con Solución de Bucle de Ráfaga y Generación Centralizada
+ */
+export const triggerAnalysis = async (req: Request, res: Response) => {
+  const { niches, country, nicheLimit, eliteLimit } = req.body; 
+  const TOPIC_NAME = 'discovery-tasks';
+
+  try {
+    // 1. Preparación de variables de control
+    const targetCountry = country || 'CL';
+    const effectiveEliteLimit = Number(eliteLimit || 10);
+    
+    let finalNiches = String(niches || '')
       .split(';')
       .map(n => n.trim())
       .filter(n => n.length > 2);
 
-    // 2. CÁLCULO DE CARGA TÉCNICA (Protección de Cuota Pro)
-    const effectiveNicheCount = nicheList.length > 0 ? nicheList.length : Number(nicheLimit || 5);
-    const effectiveEliteLimit = Number(eliteLimit || 10);
-
+    const effectiveNicheCount = finalNiches.length > 0 ? finalNiches.length : Number(nicheLimit || 5);
     const totalEstimatedCredits = effectiveNicheCount + (effectiveNicheCount * effectiveEliteLimit);
 
-    // BLOQUEO PREVENTIVO
-    if (totalEstimatedCredits > 100) {
-      console.warn(`🛑 Bloqueo de ráfaga: Solicitados ${totalEstimatedCredits} créditos.`);
-      return res.status(403).json({ 
-        error: 'Configuración excede el límite de ráfaga Pro (100 créditos/hora).',
-        estimated: totalEstimatedCredits,
-        limit: 100
-      });
+    // 2. Validación de Cuota (Blindaje Pro) - Sube el límite si tu RapidAPI lo permite
+    if (totalEstimatedCredits > 300) {
+      // return res.status(403).json({ 
+      //   error: 'Configuración excede el límite de ráfaga Pro.',
+      //   estimated: totalEstimatedCredits,
+      //   limit: 300
+      // });
+      console.warn(`⚠️ [ALERTA DE CUOTA] El lote estima ${totalEstimatedCredits} créditos, lo cual es alto. Procediendo bajo riesgo del admin.`);
     }
 
-    // 3. ENVÍO VÍA PUB/SUB (En lugar de Axios)
-    const messageData = {
-      niche: niches,
-      nicheLimit: effectiveNicheCount,
-      eliteLimit: effectiveEliteLimit,
-      country: country || 'CL',
-      manual: nicheList.length > 0
-    };
+    // --- [INTEGRACIÓN] GENERACIÓN CENTRALIZADA DE NICHOS ---
+    if (finalNiches.length === 0) {
+      console.log(`🤖 [GATEWAY] Solicitando ${effectiveNicheCount} nichos diversos a Gemini...`);
+      
+      // Obtenemos historial de caché para evitar repeticiones
+      const recentRes = await pool.query('SELECT niche_text FROM niche_cache ORDER BY created_at DESC LIMIT 50');
+      const excluded = recentRes.rows.map(r => r.niche_text);
 
-    // Publicamos el mensaje en el canal que el Discovery Worker está escuchando
-    const dataBuffer = Buffer.from(JSON.stringify(messageData));
-    const messageId = await pubsub.topic(TOPIC_NAME).publishMessage({ data: dataBuffer });
+      // LLAMADA ÚNICA: Gemini genera el array completo de una vez
+      finalNiches = await gemini.generateDynamicNiches(targetCountry, effectiveNicheCount, excluded);
+      console.log(`✅ [GATEWAY] Nichos listos: ${finalNiches.join(', ')}`);
+    }
+    // -------------------------------------------------------
 
-    console.log(`✅ Mensaje publicado en Pub/Sub: ${messageId}`);
+    // 3. REGISTRO DEL BATCH (Punto de control en DB)
+    const batchRes = await pool.query(`
+      INSERT INTO search_batches 
+        (target_country, total_niches_requested, target_elite_count, status)
+      VALUES ($1, $2, $3, 'DISCOVERING')
+      RETURNING id;
+    `, [targetCountry, effectiveNicheCount, effectiveEliteLimit]);
 
-    // 4. Respuesta exitosa con telemetría
+    const batchId = batchRes.rows[0].id;
+
+    // 4. DESPACHO INDIVIDUAL DE TAREAS
+    // Ahora enviamos el nicho ya definido desde el Gateway para evitar colisiones
+    const dispatchPromises = finalNiches.map((nicheName) => {
+      const messageData = {
+        batchId: batchId,
+        niche: nicheName, 
+        country: targetCountry,
+        eliteLimit: effectiveEliteLimit
+      };
+
+      const dataBuffer = Buffer.from(JSON.stringify(messageData));
+      return pubsub.topic(TOPIC_NAME).publishMessage({ data: dataBuffer });
+    });
+
+    // 5. Confirmación de envío masivo
+    const messageIds = await Promise.all(dispatchPromises);
+
+    console.log(`🚀 [GATEWAY] Batch ${batchId} disparado con ${messageIds.length} nichos únicos.`);
+
     res.status(202).json({ 
-      message: 'Análisis iniciado correctamente vía Pub/Sub',
-      jobId: messageId, // Usamos el ID del mensaje como JobId
-      processed_niches: nicheList.length > 0 ? nicheList : `IA generará ${effectiveNicheCount} nichos`,
+      message: 'Análisis iniciado correctamente',
+      batchId: batchId,
+      tasksSent: messageIds.length,
+      niches: finalNiches,
       telemetry: {
         total_estimated_credits: totalEstimatedCredits,
         niche_breadth: effectiveNicheCount,
@@ -217,12 +333,7 @@ export const triggerAnalysis = async (req: Request, res: Response) => {
     });
 
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Error desconocido';
-    console.error('🚨 Error enviando tarea a Pub/Sub:', errorMessage);
-    
-    res.status(502).json({ 
-      error: 'No se pudo comunicar con Google Cloud Pub/Sub.',
-      details: errorMessage 
-    });
+    console.error('🚨 Error en triggerAnalysis:', error);
+    res.status(502).json({ error: 'Fallo en la comunicación con el ecosistema Cloud.' });
   }
 };

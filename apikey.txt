@@ -7,11 +7,21 @@ AIzaSyA0ENvUAcyqbcHRfnY5-orF4htMAx9zjdE
 AIzaSyC4K8cNWG4I7mAh7_H58WlQWvaUpgtfguw
 
 
+# 1. Base de Datos: Limpieza total y recreación de tablas v4.5
 docker exec -i aether_db psql -U admin_aether -d aethertrade_db < "C:\aether-trade\infrastructure\db\init.sql"
 
+# 2. Redis: Limpieza de locks global_proc y caché de nichos
 docker exec -it aether_redis redis-cli flushall
 
+# 3. Google Cloud Storage: Purga de multimedia (Lifestyle & Videos)
 gcloud storage rm --recursive gs://ravstore-media/products/**
+
+# 4. Pub/Sub: Purga de mensajes pendientes (Seek to Now)
+# Limpia la cola de tareas de descubrimiento
+gcloud pubsub subscriptions seek discovery-tasks-sub --time=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+# Limpia la cola de análisis profundo de candidatos
+gcloud pubsub subscriptions seek candidate-analysis-sub-2 --time=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
 Resumen de comandos en terminales separadas:
 

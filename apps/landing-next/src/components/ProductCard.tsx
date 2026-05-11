@@ -1,53 +1,62 @@
-'use client';
-import { PlayCircle, Truck, ShoppingCart } from 'lucide-react';
+// src/components/ui/ProductCard.tsx
+import Link from 'next/link';
 
-export default function ProductCard({ product, onClick }: { product: any; onClick: () => void }) {
-  const deliveryInfo = product.target_country === 'CL' ? '10-12 días' : 'Internacional';
+interface ProductCardProps {
+  product: any;
+  isFeatured?: boolean;
+}
+
+export default function ProductCard({ product, isFeatured }: ProductCardProps) {
+  const aliId = product.aliexpress_id || product.id;
+  
+  // ⚡ FIX PRECIO: Calculamos el precio real más bajo desde las variantes
+  let finalPrice = Number(product.suggested_price_local);
+  if (product.variants && product.variants.length > 0) {
+    const minVariantPrice = Math.min(
+      ...product.variants.map((v: any) => Number(v.additional_cost_usd) * Number(product.rate_to_usd || 1))
+    );
+    if (!isNaN(minVariantPrice) && minVariantPrice > 0) {
+      finalPrice = minVariantPrice;
+    }
+  }
+
+  const price = new Intl.NumberFormat('es-CL', {
+    style: 'currency', currency: 'CLP'
+  }).format(finalPrice);
 
   return (
-    <div 
-      onClick={onClick}
-      className="group relative bg-slate-900/40 border border-slate-800/50 rounded-[2.5rem] overflow-hidden hover:border-violet-500 transition-all duration-500 cursor-pointer flex flex-col"
+    <Link 
+      href={`/products/${aliId}`} 
+      className={`group relative block bg-slate-900/40 border border-slate-800/60 rounded-[2.5rem] overflow-hidden transition-all duration-700 
+                 hover:border-violet-500/50 hover:shadow-[0_0_50px_-15px_rgba(139,92,246,0.4)] 
+                 ${isFeatured ? 'md:scale-[1.05] border-slate-700/50 z-10' : 'opacity-90 hover:opacity-100'}`}
     >
-      <div className="relative aspect-square overflow-hidden">
-        <img 
-          src={product.image_url} 
-          className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+      <div className="aspect-square w-full overflow-hidden bg-slate-950 relative">
+        <img
+          src={product.image_url}
           alt={product.title_original}
+          className="h-full w-full object-cover transition-transform duration-1000 group-hover:scale-110 opacity-70 group-hover:opacity-100"
         />
-
-        {/* Badge de Envío */}
-        <div className="absolute bottom-4 left-4 flex flex-col gap-1">
-          <div className="bg-emerald-500 text-black text-[9px] font-black px-3 py-1.5 rounded-full flex items-center gap-1 uppercase">
-            <Truck className="w-3.5 h-3.5" /> Envío Gratis Chile
-          </div>
-          <div className="bg-black/60 backdrop-blur-md text-white text-[8px] font-bold px-3 py-1 rounded-full w-fit">
-             Llega en {deliveryInfo}
-          </div>
+        <div className="absolute top-6 left-6">
+          <span className="bg-black/60 backdrop-blur-xl border border-white/10 text-[9px] font-black text-violet-400 px-3 py-1.5 rounded-full uppercase tracking-[0.2em]">
+            Aether Engine Pick
+          </span>
         </div>
-
-        {/* Icono de Video */}
-        {product.video_url && (
-          <div className="absolute top-4 right-4 bg-violet-600/90 backdrop-blur-md p-2 rounded-full border border-white/20 shadow-xl">
-            <PlayCircle className="w-6 h-6 text-white animate-pulse" />
-          </div>
-        )}
       </div>
-
-      <div className="p-6 flex flex-col flex-grow">
-        <h3 className="text-white font-bold text-sm leading-tight mb-4 line-clamp-2">
-          {product.marketing_copy?.headline || product.title_original}
+      
+      <div className="p-8 space-y-4">
+        <h3 className="text-slate-300 font-bold text-lg line-clamp-2 leading-tight group-hover:text-white transition-colors duration-300">
+          {product.marketing_copy?.title_localized || product.title_original}
         </h3>
-
-        <div className="mt-auto flex items-end justify-between">
-          <p className="text-2xl font-black text-white tracking-tighter">
-            {new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 }).format(product.suggested_price_local)}
-          </p>
-          <div className="bg-violet-600 p-3 rounded-2xl group-hover:bg-violet-500 transition-colors">
-            <ShoppingCart className="w-5 h-5 text-white" />
+        <div className="flex items-center justify-between pt-2">
+          <p className="text-2xl font-black text-white tracking-tighter">{price}</p>
+          <div className="h-12 w-12 rounded-2xl bg-slate-800 border border-slate-700 flex items-center justify-center group-hover:bg-violet-600 transition-all duration-500 group-hover:rotate-6">
+            <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+            </svg>
           </div>
         </div>
       </div>
-    </div>
+    </Link>
   );
 }

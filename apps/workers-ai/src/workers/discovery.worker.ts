@@ -1,3 +1,4 @@
+// apps/workers-ai/src/workers/discovery.worker.ts
 import { PubSub } from '@google-cloud/pubsub';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -5,8 +6,6 @@ import dotenv from 'dotenv';
 import { pool } from '../lib/db.js';
 import { redis } from '../lib/redis.js'; 
 import { AliExpressService } from '../aliexpress.service.js';
-import { GeminiService } from '../gemini.service.js';
-import { calculateSuggestedPrice } from '../lib/pricing.js';
 import { MARKET_CONFIG } from '../config/constants.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -18,7 +17,8 @@ if (process.env.NODE_ENV !== 'production') {
 
 const pubsub = new PubSub();
 const aliService = new AliExpressService();
-const gemini = new GeminiService();
+
+// Nota: GeminiService ya no es necesario aquí, la lógica de "cerebro" reside en el Gateway.
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -44,212 +44,185 @@ interface AliExpressItem {
 }
 
 /**
- * Procesa la tarea de descubrimiento de productos.
- * Soporta múltiples nichos manuales separados por ";" e integración con CFO Engine.
+ * FASE 1: COSECHA GLOBAL (Harvest)
+ * Recibe un nicho ya definido por el Gateway y procesa los candidatos.
  */
 export async function runDiscoveryTask(
-  manualNiche?: string, 
+  batchId: string,
+  niche: string, 
   manualCountry?: string, 
-  nicheLimit?: number, 
   eliteLimit?: number 
 ) {
   const ahora = new Date().toLocaleString("es-CL", { timeZone: "America/Santiago" });
-  const isManual = !!(manualNiche && manualCountry);
-  
-  const FINAL_NICHE_LIMIT = Number(nicheLimit) || (isManual ? 1 : 5);
-  const FINAL_ELITE_LIMIT = Number(eliteLimit) || 10; 
+  const targetCountry = manualCountry || 'CL';
+  const config = MARKET_CONFIG[targetCountry as keyof typeof MARKET_CONFIG] || MARKET_CONFIG.CL;
 
-  let requestCounter = 0;
-  let globalWinnersFound = 0; 
-
-  console.log(`\n🚀 [INICIO] runDiscoveryTask V3.4.4 | ${ahora}`);
-  console.log(`📡 Parámetros -> Nicho: ${manualNiche || 'AUTO'}, País: ${manualCountry || 'TODOS'}`);
-  console.log(`📊 Cuota Pro -> Nichos Máx: ${FINAL_NICHE_LIMIT} | Límite Global Ganadores: ${FINAL_ELITE_LIMIT}`);
+  console.log(`\n🚜 [COSECHA BATCH: ${batchId}] | ${ahora}`);
+  console.log(`📡 Nicho Recibido: "${niche}" | Mercado: ${targetCountry}`);
 
   try {
-    const recentNichesRes = await pool.query(
-      'SELECT niche_text FROM niche_cache ORDER BY created_at DESC LIMIT 50'
+    // 1. Registro y Limpieza del Nicho
+    // Tomamos las primeras 4 palabras para mantener el SEO limpio en la base de datos
+    const cleanSearchQuery = niche.split(' ').slice(0, 4).join(' ');
+    
+    const nicheRes = await pool.query(
+      `INSERT INTO niche_cache (country_code, niche_text) 
+       VALUES ($1, $2) 
+       ON CONFLICT (country_code, niche_text) 
+       DO UPDATE SET created_at = NOW() 
+       RETURNING id`, 
+      [targetCountry, cleanSearchQuery]
     );
-    const excludedNiches = recentNichesRes.rows.map(r => r.niche_text);
+    const nicheId = nicheRes.rows[0].id;
 
-    const marketsQuery = manualCountry 
-      ? { text: `SELECT country_code, country_name FROM tax_rules WHERE country_code = $1 AND is_active = TRUE`, values: [manualCountry] }
-      : { text: `SELECT country_code, country_name FROM tax_rules WHERE is_active = TRUE`, values: [] };
+    // 2. Scraper Inicial (Búsqueda en AliExpress Business)
+    const rawItems = await aliService.searchTrending(cleanSearchQuery, targetCountry);
+    console.log(` 📦 Buffer: ${rawItems.length} productos brutos encontrados para "${cleanSearchQuery}".`);
 
-    const marketsRes = await pool.query(marketsQuery.text, marketsQuery.values);
-
-    for (const market of marketsRes.rows) {
-      const { country_code } = market;
-      const config = MARKET_CONFIG[country_code as keyof typeof MARKET_CONFIG] || MARKET_CONFIG.CL;
-
-      console.log(`\n🏢 PROCESANDO MERCADO: [${country_code}]`);
-
-      const niches = manualNiche 
-        ? manualNiche.split(';').map(n => n.trim()).filter(n => n.length > 0).slice(0, FINAL_NICHE_LIMIT)
-        : await gemini.generateDynamicNiches(country_code, FINAL_NICHE_LIMIT, excludedNiches); 
+    // 3. Pre-Filtro y Scoring (Arbitraje de Entrada)
+    const poolCandidates = [];
+    for (const item of rawItems) {
+      const product = item as AliExpressItem;
       
-      console.log(`💡 Nichos a investigar: ${JSON.stringify(niches)}`);
+      const price = Number(product.sku?.def?.promotionPrice || product.sku?.def?.price || product.price || 0);
+      const rating = Number(product.averageStarRate || product.rating || 0);
+      const shipping = Number(product.delivery?.shippingFee || 0);
+      const sales = Number(product.sales || 0);
 
-      for (const niche of niches) {
-        if (globalWinnersFound >= FINAL_ELITE_LIMIT) break;
+      // Verificación de Redis: Si ya está en análisis profundo, no lo volvemos a meter al pool
+      const globalCacheKey = `global_proc:${product.aliexpress_id}`;
+      const isAnalyzed = await redis.get(globalCacheKey);
+      
+      if (isAnalyzed) {
+        continue;
+      }
 
-        const cleanSearchQuery = niche.split(' ').slice(0, 4).join(' ');
-        console.log(`\n 🧐 Analizando nicho: "${cleanSearchQuery}"`);
-        
-        await pool.query(
-          'INSERT INTO niche_cache (country_code, niche_text) VALUES ($1, $2) ON CONFLICT DO NOTHING', 
-          [country_code, cleanSearchQuery]
-        );
+      // Filtros de Configuración (MARKET_CONFIG)
+      if (
+        price >= config.MIN_PRICE && price <= config.MAX_PRICE &&
+        rating >= config.MIN_RATING &&
+        sales >= config.MIN_SALES &&
+        shipping <= config.MAX_SHIPPING
+      ) {
+        // Scoring de descubrimiento: Priorizamos ventas y rating sobre precio
+        const discoveryScore = (sales * rating) / (price > 0 ? price : 1);
 
-        const rawItems = await aliService.searchTrending(cleanSearchQuery, country_code);
-        requestCounter++; 
-        console.log(` 📦 Buffer: ${rawItems.length} productos brutos.`);
-
-        // --- CORRECCIÓN DE PRE-FILTRO: Conversión Numérica Forzada ---
-        const eliteCandidates = rawItems.filter((item: any) => {
-          const product = item as AliExpressItem;
-          
-          // Forzamos conversión a número para evitar el error de comparación string | number
-          const price = Number(product.sku?.def?.promotionPrice || product.sku?.def?.price || product.price);
-          const rating = Number(product.averageStarRate || product.rating || 0);
-          const shipping = Number(product.delivery?.shippingFee || 0);
-          const sales = Number(product.sales || 0);
-
-          return (
-            price >= config.MIN_PRICE && price <= config.MAX_PRICE &&
-            rating >= config.MIN_RATING &&
-            sales >= config.MIN_SALES &&
-            shipping <= config.MAX_SHIPPING
-          );
-        }).sort((a: any, b: any) => (Number(b.sales) || 0) - (Number(a.sales) || 0));
-
-        console.log(` ✨ ${eliteCandidates.length} candidatos pasaron el pre-filtro.`);
-        
-        for (const item of eliteCandidates) {
-          if (globalWinnersFound >= FINAL_ELITE_LIMIT) break; 
-
-          if (requestCounter >= 95) {
-            console.warn("⚠️ [LIMITER] Cerca del límite. Iniciando Cooldown...");
-            await sleep(60000); 
-            requestCounter = 0; 
-          }
-
-          const product = item as AliExpressItem;
-          const { aliexpress_id, title, imageUrl } = product;
-          
-          // También aseguramos conversión aquí para el resto de la lógica
-          const price = Number(product.sku?.def?.promotionPrice || product.sku?.def?.price || product.price);
-          const rating = Number(product.averageStarRate || product.rating || 0);
-          const sales = Number(product.sales || 0);
-
-          const globalCacheKey = `global_proc:${aliexpress_id}`;
-          const localCacheKey = `proc:${country_code}:${aliexpress_id}`;
-
-          const [isGlobal, isLocal] = await Promise.all([
-            redis.get(globalCacheKey),
-            redis.get(localCacheKey)
-          ]);
-
-          if (isGlobal || isLocal) {
-            console.log(` 🛡️ [SKIP] ID ${aliexpress_id} ya analizado.`);
-            continue;
-          }
-
-          try {
-            await sleep(1500); 
-
-            console.log(` 💎 Detalle ID: ${aliexpress_id} | Req: ${requestCounter}/100...`);
-            const detail = await aliService.getItemDetail(aliexpress_id);
-            requestCounter++; 
-
-            const finalPrice = Number(detail?.price) || price || 0;
-            const finalShipping = Number(detail?.shippingFee) || 0;
-            const finalTitle = detail?.title || title || "Producto sin nombre";
-
-            if (finalShipping > config.MAX_SHIPPING) {
-              console.log(` ❌ ID ${aliexpress_id} rechazado: Envío $${finalShipping} excedido.`);
-              continue;
-            }
-
-            const suggestedPrice = calculateSuggestedPrice(finalPrice, finalShipping, country_code);
-            const netMargin = suggestedPrice - (finalPrice + finalShipping);
-
-            if (netMargin < config.SAFETY_MARGIN) {
-              console.log(` ❌ ID ${aliexpress_id} rechazado: Margen $${netMargin.toFixed(2)} bajo.`);
-              continue;
-            }
-
-            if (detail && detail.stock < 10) {
-              console.log(` ❌ ID ${aliexpress_id} rechazado: Stock insuficiente (${detail.stock}).`);
-              continue;
-            }
-
-            globalWinnersFound++;
-            console.log(` ✅ GANADOR [${globalWinnersFound}/${FINAL_ELITE_LIMIT}]: ${finalTitle.substring(0, 30)}`);
-
-            const insertQuery = `
-              INSERT INTO products (
-                aliexpress_id, title_original, image_url, video_url, target_country, 
-                base_cost_usd, shipping_cost_usd, suggested_price, rating, sales_count, status, raw_details, source
-              )
-              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'PENDING', $11, $12)
-              ON CONFLICT (aliexpress_id, target_country) 
-              DO UPDATE SET 
-                updated_at = NOW(), 
-                sales_count = EXCLUDED.sales_count, 
-                suggested_price = EXCLUDED.suggested_price,
-                raw_details = EXCLUDED.raw_details 
-              RETURNING id;
-            `;
-
-            const res = await pool.query(insertQuery, [
-              aliexpress_id, finalTitle, imageUrl, detail?.videoUrl || null, country_code,
-              finalPrice, finalShipping, suggestedPrice, rating, sales, JSON.stringify(detail), 'AliExpress'
-            ]);
-
-            if (res.rows.length > 0) {
-              await pubsub.topic('candidate-analysis-2').publishMessage({ 
-                data: Buffer.from(JSON.stringify({ dbId: res.rows[0].id, targetCountry: country_code })) 
-              });
-              
-              await redis.set(globalCacheKey, '1', 'EX', 86400); 
-              await redis.set(localCacheKey, '1', 'EX', 604800);
-            }
-
-          } catch (err: any) {
-            console.error(` ⚠️ Error ID ${aliexpress_id}:`, err.message);
-            if (err.message.toLowerCase().includes('quota')) return; 
-          }
-        }
+        poolCandidates.push({
+          batchId,
+          nicheId,
+          aliexpress_id: product.aliexpress_id,
+          title: product.title,
+          price,
+          sales,
+          rating,
+          score: discoveryScore
+        });
       }
     }
-  } catch (globalError: any) {
-    console.error("\n🚨 [ERROR CRÍTICO]:", globalError.message);
+
+    console.log(` ✨ ${poolCandidates.length} candidatos pasaron el pre-filtro.`);
+
+    // 4. Inserción masiva en Discovery Pool
+    if (poolCandidates.length > 0) {
+      for (const cand of poolCandidates) {
+        await pool.query(`
+          INSERT INTO discovery_pool 
+            (batch_id, niche_id, aliexpress_id, title_raw, price_est_usd, sales_est, rating_est, discovery_score)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+          ON CONFLICT DO NOTHING`, 
+          [cand.batchId, cand.nicheId, cand.aliexpress_id, cand.title, cand.price, cand.sales, cand.rating, cand.score]
+        );
+      }
+    }
+
+    // 5. Orquestación: Actualizar progreso del Batch
+    const batchUpdate = await pool.query(`
+      UPDATE search_batches 
+      SET completed_niches = completed_niches + 1, updated_at = NOW() 
+      WHERE id = $1 RETURNING completed_niches, total_niches_requested`, 
+      [batchId]
+    );
+
+    const { completed_niches, total_niches_requested } = batchUpdate.rows[0];
+    console.log(`📈 [PROGRESS] Batch ${batchId}: ${completed_niches}/${total_niches_requested} nichos completados.`);
+
+    // 6. Disparar Ranking Global (Solo si es la última tarea del lote)
+    if (completed_niches >= total_niches_requested) {
+      console.log(`🎯 [LOTE FINALIZADO] Iniciando selección de élite...`);
+      await triggerGlobalRanking(batchId, targetCountry, eliteLimit || 50);
+    }
+
+  } catch (error: any) {
+    console.error(`🚨 [ERROR DISCOVERY] Batch ${batchId}:`, error.message);
   }
 }
 
+/**
+ * FASE 2: RANKING GLOBAL (Diversity Engine)
+ * Selecciona los mejores productos de cada nicho para el análisis profundo.
+ */
+async function triggerGlobalRanking(batchId: string, country: string, eliteLimit: number) {
+  try {
+    await pool.query(`UPDATE search_batches SET status = 'RANKING' WHERE id = $1`, [batchId]);
+
+    // Usamos PARTITION BY para asegurar diversidad (que no todos los ganadores sean de un solo nicho)
+    const eliteRes = await pool.query(`
+      WITH RankedItems AS (
+        SELECT aliexpress_id,
+               ROW_NUMBER() OVER(PARTITION BY niche_id ORDER BY discovery_score DESC) as rank_in_niche
+        FROM discovery_pool
+        WHERE batch_id = $1
+      )
+      SELECT aliexpress_id FROM RankedItems 
+      WHERE rank_in_niche <= 10 
+      ORDER BY rank_in_niche ASC 
+      LIMIT $2`, 
+      [batchId, eliteLimit]
+    );
+
+    console.log(`🚀 [ANALYSIS] Enviando ${eliteRes.rows.length} finalistas al Analysis Worker...`);
+
+    for (const row of eliteRes.rows) {
+      await pubsub.topic('candidate-analysis-2').publishMessage({ 
+        data: Buffer.from(JSON.stringify({ 
+          aliexpress_id: row.aliexpress_id, 
+          batchId: batchId,
+          targetCountry: country 
+        })) 
+      });
+    }
+
+    await pool.query(`UPDATE search_batches SET status = 'ARBITRATING' WHERE id = $1`, [batchId]);
+
+  } catch (error) {
+    console.error("🚨 [RANKING ERROR]:", error);
+  }
+}
+
+/**
+ * LISTENER DE TAREAS
+ */
 async function listenForDiscoveryTasks() {
   const subscription = pubsub.subscription('discovery-tasks-sub');
-  console.log("📡 Discovery Worker listo. Escuchando órdenes en 'discovery-tasks-sub'...");
+  console.log("📡 Discovery Worker V4.7 (Pure Execution) | Escuchando...");
 
   subscription.on('message', async (message) => {
     try {
-      const { niche, country, nicheLimit, eliteLimit } = JSON.parse(message.data.toString());
-      console.log(`📥 [TAREA RECIBIDA] Iniciando Scouting para: ${niche || 'AUTO'}`);
-      await runDiscoveryTask(niche, country, nicheLimit, eliteLimit);
-      message.ack();
-    } catch (error: any) {
-      console.error("⚠️ Error procesando mensaje de descubrimiento:", error.message);
-      message.ack(); 
-    }
-  });
+      const rawData = JSON.parse(message.data.toString());
+      const bId = rawData.batchId || rawData.batch_id; 
 
-  subscription.on('error', (err) => {
-    console.error("🚨 Error en suscripción Pub/Sub (Discovery):", err);
+      if (!bId || !rawData.niche) {
+        console.warn("⚠️ Mensaje ignorado: Falta BatchID o Nicho.");
+        return message.ack(); 
+      }
+
+      await runDiscoveryTask(bId, rawData.niche, rawData.country, rawData.eliteLimit);
+      message.ack();
+    } catch (err) {
+      console.error("🚨 Error procesando mensaje:", err);
+      message.ack();
+    }
   });
 }
 
-listenForDiscoveryTasks().catch(err => {
-  console.error("🚨 Falló el inicio del Discovery Listener:", err);
-  process.exit(1);
-});
+listenForDiscoveryTasks();

@@ -82,12 +82,28 @@ export class CompetitorService {
       } else {
         finalPrice = Math.floor(finalPrice) + 0.99;
       }
+
+      // 5. FIX CRÍTICO: RECALCULAR ROI Y MARGEN REAL (Descontando IVA y 5% de Pasarela)
+      const netRevenueLocal = (finalPrice / (1 + vatRate / 100)) - (finalPrice * 0.05);
+      const realNetMarginUsd = (netRevenueLocal / rateToUsd) - landedCostUsd;
+      const realRoi = (realNetMarginUsd / landedCostUsd) * 100;
+
+      // Si el redondeo nos mató el margen, se rechaza
+      if (realRoi < 15) {
+          isWinner = false;
+      }
       
       return {
         ...analysis,
         isWinner: isWinner,
         suggestedPriceLocal: finalPrice,
-        competitorMinPrice: competitorMinPrice
+        competitorMinPrice: competitorMinPrice,
+        // Inyectamos la matemática real para que el Dashboard no mienta
+        analysis: {
+            ...analysis.analysis,
+            netMarginUsd: realNetMarginUsd,
+            estimatedRoi: realRoi
+        }
       };
 
     } catch (error: any) {

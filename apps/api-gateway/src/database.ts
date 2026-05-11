@@ -1,15 +1,22 @@
+
 import { Pool } from 'pg';
 import path from 'path';
 import dotenv from 'dotenv';
+import { fileURLToPath } from 'url'; // 👈 Añade esto
 
-// 1. Configuración del path al .env global
+// 1. Recrear __dirname para ES Modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// 2. Configuración del path al .env global
 // src (0) -> api-gateway (1) -> apps (2) -> AETHER-TRADE (3)
 const envPath = path.resolve(__dirname, '../../../.env');
 
-// 2. Carga de variables de entorno
+// 3. Carga de variables
 dotenv.config({ path: envPath });
 
 console.log(`🏠 [Database] Cargando configuración desde: ${envPath}`);
+
 
 /**
  * Configuración del Pool para el API Gateway

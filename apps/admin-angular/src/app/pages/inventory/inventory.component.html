@@ -1,18 +1,25 @@
 <div class="p-8 ml-64 bg-[#0d1117] min-h-screen w-[calc(100%-256px)] flex flex-col gap-6 animate-in fade-in">
     
+    <!-- Inventory Table Section -->
     <div class="bg-[#161b22] border border-[#30363d] rounded-2xl overflow-hidden shadow-2xl">
         <div class="p-6 border-b border-[#30363d] bg-[#0d1117] flex justify-between items-center">
-            <h2 class="text-xl font-black text-white italic tracking-tighter">
-                <span class="material-icons text-[#00f2ff]">inventory_2</span> 
-                GLOBAL INVENTORY <span class="text-[#8b949e] font-mono text-xs ml-4">[{{products.length}} ITEMS]</span>
+           <h2 class="text-xl font-black text-white italic tracking-tighter uppercase">
+                <span class="material-icons text-[#00f2ff] mr-2 align-middle">inventory_2</span> 
+                Global Inventory <span class="text-[#8b949e] font-mono text-xs ml-4">[{{products.length}} ITEMS]</span>
             </h2>
+
+            <!-- Botón del Glosario -->
+            <button (click)="isGlossaryOpen = true" class="flex items-center gap-2 bg-[#161b22] border border-[#30363d] hover:border-[#00f2ff]/50 px-4 py-2 rounded-xl text-[#8b949e] hover:text-[#00f2ff] transition-all">
+                <span class="material-icons text-sm">menu_book</span>
+                <span class="text-[10px] font-black uppercase tracking-widest">System Glossary</span>
+            </button>
         </div>
 
         <table class="w-full text-sm text-left">
             <thead class="bg-[#0d1117] text-[#8b949e] text-[10px] uppercase font-black tracking-widest border-b border-[#30363d]">
                 <tr>
                     <th class="px-8 py-5">Product Details</th>
-                    <th class="px-8 py-5">Arbitrage ROI (USD)</th>
+                    <th class="px-8 py-5">Arbitrage Performance</th>
                     <th class="px-8 py-5">Status</th>
                     <th class="px-8 py-5 text-center">Master Control</th>
                 </tr>
@@ -21,11 +28,11 @@
                 <tr *ngFor="let p of products" class="hover:bg-[#1c2128] transition-all group">
                     <td class="px-8 py-6 flex items-center gap-6">
                         <div class="w-20 h-20 rounded-2xl border border-[#30363d] bg-black overflow-hidden shadow-lg group-hover:border-[#00f2ff]/50 transition-all">
-                            <img [src]="p.image_url" class="w-full h-full object-cover">
+                            <img [src]="p.local_images && p.local_images.length > 0 ? p.local_images[0] : p.image_url" class="w-full h-full object-cover">
                         </div>
                         <div class="flex flex-col gap-1 max-w-xl">
                             <span (click)="openEditor(p)" class="text-lg font-bold text-white cursor-pointer hover:text-[#00f2ff] leading-tight">
-                                {{ p.name }}
+                                {{ p.marketing_copy?.hook || p.name }}
                             </span>
                             <span class="text-[10px] font-mono text-[#8b949e] uppercase">SKU: {{ p.aliexpress_id }} | Source: {{ p.source }}</span>
                         </div>
@@ -33,15 +40,7 @@
                     <td class="px-8 py-6 font-mono text-white relative" (mouseenter)="hoveredProductId = p.id" (mouseleave)="hoveredProductId = null">
                         <div class="flex flex-col">
                             <span class="text-[#3fb950] font-black text-base">+{{ p.roi_percent }}% ROI</span>
-                            <span class="text-[#8b949e] text-xs">${{ p.base_cost_usd | number:'1.2-2' }} Cost</span>
-                        </div>
-                        <div *ngIf="hoveredProductId === p.id" class="absolute left-full top-0 ml-4 z-50 bg-[#1c2128] border border-[#00f2ff] p-4 rounded-xl shadow-2xl w-52 animate-in zoom-in">
-                            <p class="text-[9px] text-[#00f2ff] font-bold uppercase mb-2">Local Market Estimations</p>
-                            <div class="space-y-1 text-xs">
-                                <div class="flex justify-between"><span>CLP:</span> <span class="text-white">{{ formatLocal(p.base_cost_usd, 'CLP') }}</span></div>
-                                <div class="flex justify-between"><span>MXN:</span> <span class="text-white">{{ formatLocal(p.base_cost_usd, 'MXN') }}</span></div>
-                                <div class="flex justify-between"><span>BRL:</span> <span class="text-white">{{ formatLocal(p.base_cost_usd, 'BRL') }}</span></div>
-                            </div>
+                            <span class="text-[#8b949e] text-xs">${{ p.net_margin_usd }} Net Margin</span>
                         </div>
                     </td>
                     <td class="px-8 py-6">
@@ -49,7 +48,7 @@
                             'bg-[#23863626] text-[#3fb950] border-[#23863666]': p.status === 'WINNER',
                             'bg-[#d2992226] text-[#d29922] border-[#d2992266]': p.status === 'PENDING',
                             'bg-[#f8514926] text-[#f85149] border-[#f8514966]': p.status === 'REJECTED_IA'
-                        }" class="px-3 py-1 rounded-full text-[10px] border font-black uppercase">
+                        }" class="px-3 py-1 rounded-full text-[10px] border font-black uppercase tracking-widest">
                             {{ p.status }}
                         </span>
                     </td>
@@ -59,7 +58,7 @@
                                 <input type="checkbox" [checked]="p.status === 'WINNER'" (change)="toggleStatus(p)" class="sr-only peer">
                                 <div class="w-11 h-6 bg-[#30363d] rounded-full peer peer-checked:bg-[#238636] after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-full"></div>
                             </label>
-                            <button (click)="openEditor(p)" class="material-icons text-[#8b949e] hover:text-white">settings</button>
+                            <button (click)="openEditor(p)" class="material-icons text-[#8b949e] hover:text-[#00f2ff] transition-colors">settings</button>
                         </div>
                     </td>
                 </tr>
@@ -67,77 +66,266 @@
         </table>
     </div>
 
-    <div *ngIf="isModalOpen && selectedProduct" class="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/90 backdrop-blur-sm animate-in fade-in duration-300">
-        <div class="bg-[#161b22] border border-[#30363d] w-full max-w-6xl max-h-[95vh] rounded-3xl overflow-hidden flex flex-col shadow-2xl">
+    <!-- Master Editor Modal -->
+    <div *ngIf="isModalOpen && selectedProduct" class="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/90 backdrop-blur-md animate-in fade-in duration-300">
+        <div class="bg-[#161b22] border border-[#30363d] w-full max-w-7xl max-h-[95vh] rounded-3xl overflow-hidden flex flex-col shadow-2xl">
+            
+            <!-- Modal Header -->
             <div class="p-6 border-b border-[#30363d] bg-[#0d1117] flex justify-between items-center text-white">
-                <h2 class="text-xl font-black italic tracking-tighter">MASTER EDITOR <span class="text-[#00f2ff] ml-3">#{{selectedProduct.aliexpress_id}}</span></h2>
-                <button (click)="isModalOpen=false" class="material-icons text-[#8b949e] hover:text-white">close</button>
+                <h2 class="text-xl font-black italic tracking-tighter uppercase">
+                    Master Editor <span class="text-[#00f2ff] ml-3">#{{selectedProduct.aliexpress_id}}</span>
+                </h2>
+                <button (click)="isModalOpen=false" class="material-icons text-[#8b949e] hover:text-white transition-colors">close</button>
             </div>
             
-            <div class="flex-1 overflow-y-auto p-10 space-y-10 custom-scrollbar">
-                <div class="grid grid-cols-1 lg:grid-cols-2 gap-10">
-                    <div class="space-y-6">
-                        <div>
-                            <label class="text-[10px] font-black uppercase text-[#8b949e] mb-2 block tracking-widest">Localized Title (SEO)</label>
-                            <textarea [(ngModel)]="selectedProduct.name" rows="3" class="w-full bg-[#0d1117] border border-[#30363d] rounded-2xl p-4 text-white focus:border-[#00f2ff] outline-none"></textarea>
-                        </div>
-                        <div>
-                            <label class="text-[10px] font-black uppercase text-[#8b949e] mb-2 block tracking-widest">AI Verdict / Rejection Reason</label>
-                            <textarea [(ngModel)]="selectedProduct.ai_verdict" rows="4" placeholder="Indica la razón de desactivación..." class="w-full bg-[#0d1117] border border-[#30363d] rounded-2xl p-4 text-white outline-none focus:border-[#f85149] italic"></textarea>
-                        </div>
+            <!-- Modal Body -->
+            <div class="flex-1 overflow-y-auto p-10 custom-scrollbar grid grid-cols-1 lg:grid-cols-2 gap-12">
+                
+                <!-- LEFT COLUMN: Marketing & AI Strategy -->
+                <div class="space-y-8">
+                    <!-- Check opcional para marketing_copy para evitar TS2532 -->
+                    <div *ngIf="selectedProduct?.marketing_copy">
+                        <label class="text-[10px] font-black uppercase text-[#8b949e] mb-2 block tracking-widest">Localized Title (SEO / Hook)</label>
+                        <textarea [(ngModel)]="selectedProduct!.marketing_copy!.hook" rows="2" 
+                                  class="w-full bg-[#0d1117] border border-[#30363d] rounded-2xl p-4 text-white text-lg font-bold focus:border-[#00f2ff] outline-none transition-all"></textarea>
                     </div>
-                    <div class="space-y-6">
-                        <div class="grid grid-cols-2 gap-4">
-                            <div>
-                                <label class="text-[10px] font-black uppercase text-[#8b949e] mb-2 block tracking-widest">Image Asset</label>
-                                <img [src]="selectedProduct.image_url" class="w-full h-32 object-cover rounded-xl border border-[#30363d] bg-black">
-                                <input [(ngModel)]="selectedProduct.image_url" class="mt-2 w-full bg-[#0d1117] border border-[#30363d] rounded-lg p-2 text-[10px] text-white">
-                            </div>
-                            <div>
-                                <label class="text-[10px] font-black uppercase text-[#8b949e] mb-2 block tracking-widest">Video Asset URL</label>
-                                <div class="h-32 bg-[#0d1117] border border-[#30363d] rounded-xl flex items-center justify-center">
-                                    <span class="material-icons text-[#8b949e] text-3xl">play_circle</span>
-                                </div>
-                                <input [(ngModel)]="selectedProduct.video_url" placeholder="https://..." class="mt-2 w-full bg-[#0d1117] border border-[#30363d] rounded-lg p-2 text-[10px] text-white">
+
+                    <div>
+                        <label class="text-[10px] font-black uppercase text-[#8b949e] mb-2 block tracking-widest">AI Verdict / Arbitrage Reasoning</label>
+                        <textarea [(ngModel)]="selectedProduct.ai_verdict" rows="5" 
+                                  class="w-full bg-[#0d1117] border border-[#30363d] rounded-2xl p-4 text-[#8b949e] text-xs italic outline-none focus:border-[#f85149] leading-relaxed"></textarea>
+                    </div>
+
+                    <div *ngIf="selectedProduct.marketing_copy">
+                        <label class="text-[10px] font-black uppercase text-[#8b949e] mb-3 block tracking-widest">Product Benefits (Bullets)</label>
+                        <div class="space-y-3">
+                            <div *ngFor="let benefit of selectedProduct!.marketing_copy!.benefits; let i = index" class="flex items-center gap-3">
+                                <span class="material-icons text-[#3fb950] text-sm">verified</span>
+                                <input [(ngModel)]="selectedProduct!.marketing_copy!.benefits[i]" 
+                                       class="flex-1 bg-[#0d1117] border border-[#30363d] rounded-xl px-4 py-2 text-xs text-white focus:border-[#00f2ff] outline-none">
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <div class="pt-10 border-t border-[#30363d] grid grid-cols-2 md:grid-cols-4 gap-6">
-                    <div class="p-4 bg-[#0d1117] rounded-2xl border border-[#30363d]">
-                        <p class="text-[9px] font-black text-[#8b949e] uppercase mb-1">Base Cost (USD)</p>
-                        <p class="text-xl font-mono text-white">${{selectedProduct.base_cost_usd}}</p>
+                <!-- RIGHT COLUMN: Financials & Media Management -->
+                <div class="space-y-8">
+                    
+                    <!-- Financial Console -->
+                    <div class="bg-[#0d1117] border border-[#30363d] rounded-3xl p-6 grid grid-cols-2 gap-6 shadow-inner">
+                        <div class="col-span-2 flex justify-between items-center border-b border-[#30363d] pb-4 mb-2">
+                            <span class="text-[10px] font-black text-[#00f2ff] uppercase italic tracking-widest">CFO Engine / Real-time Recalculation</span>
+                            <span class="text-[10px] font-bold text-[#8b949e]">VAT: {{selectedProduct.vat_rate}}%</span>
+                        </div>
+                        
+                        <div>
+                            <label class="text-[9px] font-black text-[#8b949e] uppercase mb-1 block">Suggested Price (CLP)</label>
+                            <input type="number" [(ngModel)]="selectedProduct.suggested_price_local" (input)="onPriceUpdate()"
+                                   class="w-full bg-[#161b22] border border-[#30363d] rounded-xl px-4 py-3 text-white font-mono text-xl font-bold focus:border-[#00f2ff] outline-none">
+                        </div>
+
+                        <div class="bg-[#23863610] border border-[#23863640] rounded-2xl p-4 flex flex-col justify-center items-center">
+                            <p class="text-[9px] font-black text-[#3fb950] uppercase mb-1">Real ROI</p>
+                            <p class="text-2xl font-black text-[#3fb950] font-mono">{{selectedProduct.roi_percent}}%</p>
+                        </div>
+
+                        <div class="p-2 opacity-60">
+                            <p class="text-[9px] font-black text-[#8b949e] uppercase mb-1">Base Landed (USD)</p>
+                            <p class="text-sm font-mono text-white">${{(selectedProduct.base_cost_usd || 0) + (selectedProduct.shipping_cost_usd || 0)}}</p>
+                        </div>
+
+                        <div class="bg-[#00f2ff]/5 border border-[#00f2ff]/30 rounded-2xl p-4 flex flex-col justify-center items-center">
+                            <p class="text-[9px] font-black text-[#00f2ff] uppercase mb-1">Net Margin (USD)</p>
+                            <p class="text-2xl font-black text-white font-mono">${{selectedProduct.net_margin_usd}}</p>
+                        </div>
                     </div>
-                    <div class="p-4 bg-[#0d1117] rounded-2xl border border-[#30363d]">
-                        <p class="text-[9px] font-black text-[#8b949e] uppercase mb-1">Shipping Cost</p>
-                        <p class="text-xl font-mono text-white">${{selectedProduct.shipping_cost_usd}}</p>
-                    </div>
-                    <div class="p-4 bg-[#0d1117] rounded-2xl border border-[#00f2ff]/30">
-                        <p class="text-[9px] font-black text-[#00f2ff] uppercase mb-1">Suggested Price</p>
-                        <p class="text-xl font-mono text-[#00f2ff] font-bold">${{selectedProduct.suggested_price}}</p>
-                    </div>
-                    <div class="p-4 bg-[#0d1117] rounded-2xl border border-[#3fb950]/30">
-                        <p class="text-[9px] font-black text-[#3fb950] uppercase mb-1">Estimated ROI</p>
-                        <p class="text-xl font-mono text-[#3fb950] font-bold">{{selectedProduct.roi_percent}}%</p>
+
+                    <!-- Media Asset Manager -->
+                    <div class="space-y-4">
+                        <label class="text-[10px] font-black uppercase text-[#8b949e] tracking-widest">Master Media Assets</label>
+                        
+                        <!-- Image Gallery -->
+                        <div class="grid grid-cols-4 gap-3">
+                            <div *ngFor="let img of selectedProduct.local_images; let i = index" class="relative group aspect-square rounded-2xl overflow-hidden border border-[#30363d] bg-black">
+                                <img [src]="img" class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500">
+                                <button (click)="removeImage(i)" class="absolute top-2 right-2 bg-[#f85149] text-white p-1 rounded-lg opacity-0 group-hover:opacity-100 transition-all shadow-lg">
+                                    <span class="material-icons text-sm">delete</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Video Slot -->
+                        <div *ngIf="selectedProduct.video_url" class="relative bg-[#0d1117] border border-[#30363d] rounded-2xl p-4 flex items-center gap-4 group">
+                            <div class="w-12 h-12 bg-black rounded-xl flex items-center justify-center border border-[#30363d]">
+                                <span class="material-icons text-[#00f2ff]">play_circle</span>
+                            </div>
+                            <div class="flex-1 overflow-hidden">
+                                <p class="text-[9px] font-black text-[#8b949e] uppercase">Video Asset URL</p>
+                                <p class="text-[10px] text-white truncate font-mono">{{selectedProduct.video_url}}</p>
+                            </div>
+                            <button (click)="removeVideo()" class="bg-[#f8514910] text-[#f85149] p-2 rounded-xl hover:bg-[#f85149] hover:text-white transition-all">
+                                <span class="material-icons text-base">videocam_off</span>
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
 
-            <div class="p-8 border-t border-[#30363d] bg-[#0d1117] flex justify-between items-center">
+            <!-- Modal Footer -->
+            <div class="p-8 border-t border-[#30363d] bg-[#0d1117] flex justify-between items-center shadow-2xl">
                 <div class="flex flex-col gap-1">
-                    <label class="text-[10px] font-black text-[#8b949e] uppercase">Master System Status</label>
-                    <select [(ngModel)]="selectedProduct.status" class="bg-[#161b22] border border-[#30363d] rounded-xl px-4 py-2 text-sm text-white">
+                    <label class="text-[10px] font-black text-[#8b949e] uppercase tracking-widest">Master System Status</label>
+                    <select [(ngModel)]="selectedProduct.status" class="bg-[#161b22] border border-[#30363d] rounded-xl px-4 py-2 text-sm text-white focus:border-[#00f2ff] outline-none">
                         <option value="WINNER">WINNER (Habilitado)</option>
                         <option value="PENDING">PENDING (En Revisión)</option>
-                        <option value="REJECTED_IA">REJECTED_IA (Desactivado)</option>
+                        <option value="REJECTED_IA">REJECTED (Desactivado)</option>
                     </select>
                 </div>
                 <div class="flex gap-4">
-                    <button (click)="isModalOpen=false" class="px-8 font-black text-[#8b949e] uppercase text-xs tracking-widest">Discard</button>
-                    <button (click)="saveProduct()" class="bg-[#238636] hover:bg-[#2ea043] px-10 py-3 rounded-2xl text-white font-black shadow-xl uppercase text-xs tracking-widest">Update Master DB</button>
+                    <button (click)="isModalOpen=false" class="px-8 font-black text-[#8b949e] hover:text-white uppercase text-xs tracking-widest transition-colors">Discard Changes</button>
+                    <button (click)="saveProduct()" 
+                            class="bg-gradient-to-r from-[#238636] to-[#2ea043] hover:from-[#2ea043] hover:to-[#3fb950] px-10 py-4 rounded-2xl text-white font-black shadow-xl uppercase text-xs tracking-widest transition-all hover:scale-105 active:scale-95">
+                        Update Master DB
+                    </button>
                 </div>
             </div>
         </div>
     </div>
+
+    <!-- AETHER TRADE GLOSSARY MODAL -->
+<div *ngIf="isGlossaryOpen" class="fixed inset-0 z-[110] flex items-center justify-center p-6 bg-black/90 backdrop-blur-md animate-in zoom-in duration-200">
+    <div class="bg-[#0d1117] border border-[#30363d] w-full max-w-3xl max-h-[85vh] rounded-3xl overflow-hidden flex flex-col shadow-2xl shadow-[#00f2ff]/10">
+        
+        <!-- Header -->
+        <div class="p-6 border-b border-[#30363d] bg-[#161b22] flex justify-between items-center">
+            <h2 class="text-lg font-black text-white italic tracking-tighter uppercase flex items-center gap-2">
+                <span class="material-icons text-[#00f2ff]">terminal</span>
+                Aether-Core Nomenclature
+            </h2>
+            <button (click)="isGlossaryOpen = false" class="material-icons text-[#8b949e] hover:text-white transition-colors">close</button>
+        </div>
+        
+        <!-- Contenido Scrollable -->
+        <div class="flex-1 overflow-y-auto p-8 custom-scrollbar space-y-6">
+
+            <!-- SECCIÓN 1: DASHBOARD PERFORMANCE (KPIs) -->
+            <div class="border-b border-[#30363d] pb-2 mb-4">
+                <span class="text-[10px] font-black text-[#8b949e] uppercase tracking-[0.2em]">Dashboard KPI Definitions</span>
+            </div>
+            
+            <div class="bg-[#161b22] border border-[#30363d] rounded-2xl p-5">
+                <h3 class="text-[#00f2ff] font-black uppercase text-xs tracking-widest mb-2 flex items-center gap-2">
+                    <span class="material-icons text-sm">payments</span> Potential Net Profit
+                </h3>
+                <p class="text-[#8b949e] text-sm leading-relaxed">
+                    Representa la ganancia real proyectada si se vendiera una unidad de cada producto marcado como <b>WINNER</b> en el inventario actual. Este valor ya descuenta costos de stock, logística, IVA y comisiones bancarias.
+                </p>
+            </div>
+
+            <div class="bg-[#161b22] border border-[#30363d] rounded-2xl p-5">
+                <h3 class="text-[#00f2ff] font-black uppercase text-xs tracking-widest mb-2 flex items-center gap-2">
+                    <span class="material-icons text-sm">military_tech</span> Market Winners
+                </h3>
+                <p class="text-[#8b949e] text-sm leading-relaxed">
+                    Conteo de productos que han pasado satisfactoriamente todos los filtros de validación de mercado y análisis de IA, alcanzando el estado de viabilidad económica para su comercialización.
+                </p>
+            </div>
+
+            <div class="bg-[#161b22] border border-[#30363d] rounded-2xl p-5">
+                <h3 class="text-[#00f2ff] font-black uppercase text-xs tracking-widest mb-2 flex items-center gap-2">
+                    <span class="material-icons text-sm">database</span> Items Scanned
+                </h3>
+                <p class="text-[#8b949e] text-sm leading-relaxed">
+                    Volumen total de registros procesados por el motor de scouting. Permite medir la tasa de conversión ("Strike Rate") entre productos explorados y oportunidades reales detectadas.
+                </p>
+            </div>
+
+            <div class="bg-[#161b22] border border-[#30363d] rounded-2xl p-5">
+                <h3 class="text-[#3fb950] font-black uppercase text-xs tracking-widest mb-2 flex items-center gap-2">
+                    <span class="material-icons text-sm">insights</span> Global Avg. ROI
+                </h3>
+                <p class="text-[#8b949e] text-sm leading-relaxed">
+                    Promedio de eficiencia del capital invertido en todos los productos ganadores. Indica cuánto margen neto se genera por cada dólar destinado a la operación.
+                </p>
+            </div>
+
+            <div class="bg-[#161b22] border border-[#30363d] rounded-2xl p-5">
+                <h3 class="text-[#00f2ff] font-black uppercase text-xs tracking-widest mb-2 flex items-center gap-2">
+                    <span class="material-icons text-sm">campaign</span> Meta Ads Budget (Est.)
+                </h3>
+                <p class="text-[#8b949e] text-sm leading-relaxed">
+                    Proyección de inversión publicitaria necesaria para escalar las ventas del inventario ganador. Se calcula como un <b>20%</b> del margen neto potencial para mantener un costo de adquisición de clientes (CAC) saludable.
+                </p>
+            </div>
+
+            <!-- SECCIÓN 2: CFO ENGINE & LOGISTICS -->
+            <div class="border-b border-[#30363d] pb-2 mb-4 pt-4">
+                <span class="text-[10px] font-black text-[#8b949e] uppercase tracking-[0.2em]">CFO Engine Concepts</span>
+            </div>
+
+            <div class="bg-[#161b22] border border-[#30363d] rounded-2xl p-5">
+                <h3 class="text-[#00f2ff] font-black uppercase text-xs tracking-widest mb-2 flex items-center gap-2">
+                    <span class="material-icons text-sm">flight_land</span> Base Landed (USD)
+                </h3>
+                <p class="text-[#8b949e] text-sm leading-relaxed">
+                    Es el costo total de poner el producto en el país de destino. Incluye el costo del producto en fábrica (AliExpress), el costo de envío (Shipping) y un "buffer" o colchón de seguridad para imprevistos de última milla.
+                </p>
+            </div>
+
+            <div class="bg-[#161b22] border border-[#30363d] rounded-2xl p-5">
+                <h3 class="text-[#00f2ff] font-black uppercase text-xs tracking-widest mb-2 flex items-center gap-2">
+                    <span class="material-icons text-sm">point_of_sale</span> Suggested Price (CLP)
+                </h3>
+                <p class="text-[#8b949e] text-sm leading-relaxed">
+                    El precio de venta final al público sugerido por la IA. Este valor ya contempla el IVA (VAT) del país, el costo de las pasarelas de pago (ej. Transbank/Shopify) y el redondeo psicológico (ej. terminar en .990).
+                </p>
+            </div>
+
+            <div class="bg-[#161b22] border border-[#30363d] rounded-2xl p-5">
+                <h3 class="text-[#3fb950] font-black uppercase text-xs tracking-widest mb-2 flex items-center gap-2">
+                    <span class="material-icons text-sm">account_balance_wallet</span> Net Margin (USD)
+                </h3>
+                <p class="text-[#8b949e] text-sm leading-relaxed">
+                    El beneficio puro por unidad. Se calcula como: <i>Precio de Venta Local</i> menos el <i>IVA (19%)</i>, menos la <i>comisión de pasarela (5%)</i>, menos el costo <i>Base Landed</i>.
+                </p>
+            </div>
+
+            <div class="bg-[#161b22] border border-[#30363d] rounded-2xl p-5">
+                <h3 class="text-[#3fb950] font-black uppercase text-xs tracking-widest mb-2 flex items-center gap-2">
+                    <span class="material-icons text-sm">rocket_launch</span> Real ROI (%)
+                </h3>
+                <p class="text-[#8b949e] text-sm leading-relaxed">
+                    Retorno de Inversión individual. Responde a la pregunta: <i>"Por cada dólar invertido en stock y logística, ¿cuánto dinero adicional se recupera?"</i>. El sistema prioriza ROIs superiores al 100%.
+                </p>
+            </div>
+
+            <div class="bg-[#161b22] border border-[#30363d] rounded-2xl p-5">
+                <h3 class="text-[#d29922] font-black uppercase text-xs tracking-widest mb-2 flex items-center gap-2">
+                    <span class="material-icons text-sm">water</span> Estrategia "Océano Azul"
+                </h3>
+                <p class="text-[#8b949e] text-sm leading-relaxed">
+                    Escenario detectado por la IA cuando un producto <b>no tiene competencia local</b>. Permite fijar un margen de ganancia superior al promedio al no existir una guerra de precios.
+                </p>
+            </div>
+
+        </div>
+    </div>
+</div>
+<!-- TOAST NOTIFICATION SYSTEM -->
+<div *ngIf="showToast" 
+     [ngClass]="toastType === 'success' ? 'border-[#3fb950] bg-[#23863610]' : 'border-[#f85149] bg-[#f8514910]'"
+     class="fixed bottom-10 right-10 z-[200] border p-5 rounded-2xl backdrop-blur-xl shadow-2xl flex items-center gap-4 animate-in slide-in-from-right duration-300">
+    
+    <div [ngClass]="toastType === 'success' ? 'bg-[#3fb950]' : 'bg-[#f85149]'" 
+         class="w-10 h-10 rounded-xl flex items-center justify-center shadow-lg">
+        <span class="material-icons text-[#0d1117] text-xl">
+            {{ toastType === 'success' ? 'check_circle' : 'warning' }}
+        </span>
+    </div>
+
+    <div class="flex flex-col">
+        <span class="text-[10px] font-black uppercase tracking-widest text-[#8b949e]">System Message</span>
+        <span class="text-xs font-bold text-white uppercase tracking-wider">{{ toastMsg }}</span>
+    </div>
+</div>
 </div>

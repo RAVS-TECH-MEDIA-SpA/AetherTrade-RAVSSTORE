@@ -22,6 +22,29 @@
       "env": {
         "NODE_ENV": "development"
       }
-    }
+    },
+    {
+      "name": "Debug Landing (Full Stack)",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "npm run dev",
+      "cwd": "${workspaceFolder}/apps/landing-next",
+      "console": "integratedTerminal",
+      "serverReadyAction": {
+        "action": "debugWithChrome",
+        "pattern": "started server on .+, url: (https?://.+)",
+        "uriFormat": "%s"
+      }
+    },
+    {
+  "type": "node-terminal",
+  "request": "launch",
+  "name": "Debug API Gateway (Fixed)",
+  "command": "npx tsx watch src/server.ts",
+  "cwd": "${workspaceFolder}/apps/api-gateway",
+  "env": {
+    "NODE_ENV": "development"
+  }
+}
   ]
 }

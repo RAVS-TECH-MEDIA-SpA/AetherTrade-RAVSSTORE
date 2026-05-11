@@ -1,5 +1,6 @@
-import './globals.css'; // <--- ESTA LÍNEA ES VITAL
+import './globals.css'; // <--- VITAL
 import { Metadata } from 'next';
+import Script from 'next/script'; // <--- Importamos el componente de Script
 
 export const metadata: Metadata = {
   title: {
@@ -16,7 +17,7 @@ export const metadata: Metadata = {
     url: 'https://ravstore.vercel.app',
     siteName: 'Ravstore',
     images: [{
-      url: '/og-image.jpg', // Crea una imagen de 1200x630
+      url: '/og-image.jpg',
       width: 1200,
       height: 630,
       alt: 'Ravstore - Lo mejor del mundo en Chile'
@@ -51,8 +52,30 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             })
           }}
         />
+        <Script 
+          src="https://sdk.mercadopago.com/js/v2" 
+          strategy="beforeInteractive" 
+        />
       </head>
-      <body className="antialiased">{children}</body>
+      <body className="antialiased">
+        {children}
+
+        {/* --- Google Analytics (gtag.js) --- */}
+        {/* Carga el script de forma asíncrona después de que la página sea interactiva */}
+        <Script
+          src="https://www.googletagmanager.com/gtag/js?id=G-5KQSNBQZBV"
+          strategy="afterInteractive"
+        />
+        <Script id="google-analytics" strategy="afterInteractive">
+          {`
+            window.dataLayer = window.dataLayer || [];
+            function gtag(){dataLayer.push(arguments);}
+            gtag('js', new Date());
+
+            gtag('config', 'G-5KQSNBQZBV');
+          `}
+        </Script>
+      </body>
     </html>
   );
 }

@@ -1,176 +1,268 @@
 import { PubSub } from '@google-cloud/pubsub';
 import { pool } from '../lib/db.js';
+import { redis } from '../lib/redis.js';
 import { GeminiService } from '../gemini.service.js';
 import { CompetitorService } from '../competitor.service.js';
 import { ScraperService } from '../services/scraper.service.js';
 import { MediaService } from '../services/media.services.js';
 import { SerperService } from '../services/serper.service.js';
+import { AliExpressService } from '../aliexpress.service.js';
 import { MARKET_CONFIG } from '../config/constants.js';
 
 const pubsub = new PubSub();
+const aliService = new AliExpressService();
 const gemini = new GeminiService();
 const competitorService = new CompetitorService();
 const scraper = new ScraperService();
 const media = new MediaService();
 const serper = new SerperService();
 
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, Math.max(ms, 0)));
+
 export async function listenForCandidates() {
   const subscription = pubsub.subscription('candidate-analysis-sub-2', {
     flowControl: { maxMessages: 1 }
   });
 
-  console.log("📡 Escuchando mensajes en 'candidate-analysis-sub-2'...");
+  console.log("📡 [LISTENER] Analysis Worker V6.0 (Integrated Transactional Engine) | Cabrero listo.");
 
   subscription.on('message', async (message) => {
-    const { dbId, targetCountry } = JSON.parse(message.data.toString());
+    const { aliexpress_id, batchId, targetCountry } = JSON.parse(message.data.toString());
     const targetLang = targetCountry === 'CL' ? 'Español' : 'Inglés';
     const config = MARKET_CONFIG[targetCountry as keyof typeof MARKET_CONFIG] || MARKET_CONFIG.CL;
 
+    const client = await pool.connect();
+
     try {
-      console.log(`\n🔍 [ANALISIS] Iniciando proceso para ID: ${dbId} [${targetCountry}]`);
+      console.log(`\n🔍 [ANALISIS PROFUNDO] ID: ${aliexpress_id} | Batch: ${batchId}`);
 
-      const dbRes = await pool.query(`
-        SELECT p.*, t.vat_rate, er.rate_to_usd, n.id as niche_id
-        FROM products p 
-        JOIN tax_rules t ON p.target_country = t.country_code 
-        JOIN exchange_rates er ON t.currency_code = er.currency_code
-        LEFT JOIN niche_cache n ON p.title_original ILIKE '%' || n.niche_text || '%'
-        WHERE p.id = $1 LIMIT 1`, [dbId]);
-
-      if (dbRes.rows.length === 0) {
-        console.warn(`⚠️ No se encontró el producto con ID ${dbId}.`);
-        return message.ack();
+      // 1. Obtención de Data Profunda
+      await sleep(5000); 
+      const detail = await aliService.getItemDetail(aliexpress_id);
+      
+      if (!detail || detail.stock < 5) {
+        console.log(` ❌ ID ${aliexpress_id} descartado: Stock insuficiente o no encontrado.`);
+        message.ack();
+        return; 
       }
 
-      const product = dbRes.rows[0];
+      // 2. Reglas Fiscales
+      const rulesRes = await client.query(`
+        SELECT t.vat_rate, er.rate_to_usd, t.gateway_fee_percent
+        FROM tax_rules t 
+        JOIN exchange_rates er ON t.currency_code = er.currency_code
+        WHERE t.country_code = $1 LIMIT 1`, [targetCountry]);
+      
+      if (rulesRes.rows.length === 0) throw new Error(`Reglas no encontradas para ${targetCountry}`);
+      const { vat_rate, rate_to_usd } = rulesRes.rows[0];
 
-      // 1. TRADUCCIÓN Y PREPARACIÓN
-      const localizedTitle = await gemini.translateForSearch(product.title_original, targetLang);
-
-      // 2. SCRAPER Y COSTEO
-      const landedCostUsd = Number(product.base_cost_usd) + Number(product.shipping_cost_usd) + config.LAST_MILE_BUFFER;
+      // 3. Preparación SEO y Scraper
+      const localizedTitle = await gemini.translateForSearch(detail.title, targetLang);
+      const landedCostUsd = Number(detail.price) + Number(detail.shippingFee) + config.LAST_MILE_BUFFER;
       const titleForScraping = scraper.cleanProductName(localizedTitle);
       
-      console.log(`🌐 Buscando competidores para: "${titleForScraping}"...`);
+      console.log(` 🌐 Buscando competencia local para: "${titleForScraping}"...`);
       let marketResults = await scraper.getCompetitorPrices(titleForScraping, targetCountry);
 
+      // 4. Lógica Océano Azul
       if (marketResults.length === 0) {
-        console.log(`ℹ️ Sin competidores reales. Aplicando Estrategia de Arbitraje.`);
-        
-        const taxFactor = 1 + (parseFloat(product.vat_rate) / 100);
-        const exchangeRate = parseFloat(product.rate_to_usd);
-        
-        // MEJORA: Sumamos el Buffer de envío local Y aplicamos un Markup (ej. 30%) 
-        // para no vender a precio de costo.
+        const taxFactor = 1 + (Number(vat_rate) / 100);
         const baseCostWithTax = landedCostUsd * taxFactor;
-        const totalOperatingCost = baseCostWithTax + config.LAST_MILE_BUFFER;
-        
-        // Estrategia: Costo Operativo + Margen deseado (podemos ser más ambiciosos aquí)
-        const targetMargin = Math.max(config.SAFETY_MARGIN * 1.5, 5.00); 
-        
-        const syntheticPriceLocal = (totalOperatingCost + targetMargin) * exchangeRate;
-        
-        console.log(`[DEBUG] Costo Op: $${totalOperatingCost.toFixed(2)} | Margen Obj: $${targetMargin} | Precio: CLP ${syntheticPriceLocal}`);
-        
-        // Asignamos este precio al producto para que el validador lo apruebe
-        product.suggested_price = syntheticPriceLocal; 
-}
+        const targetMargin = Math.max(config.SAFETY_MARGIN * 2, 10.00); 
+        const syntheticPriceLocal = (baseCostWithTax + targetMargin) * Number(rate_to_usd);
 
-      // 3. ANÁLISIS CFO
+        marketResults.push({
+          title: "Aether-Market-Engine (Strategic Target)",
+          price: Math.round(syntheticPriceLocal),
+          source: "Synthetic-Arbitrage",
+          link: "https://aether.trade/ocean-azul",
+          isSynthetic: true
+        });
+      }
+
+      // 5. CFO Engine
       const analysis = await competitorService.runFullAnalysis(
-        product.title_original, 
-        targetCountry, 
-        parseFloat(product.vat_rate), 
-        parseFloat(product.rate_to_usd),
-        landedCostUsd, 
-        marketResults,
-        localizedTitle 
+        detail.title, targetCountry, parseFloat(vat_rate), 
+        parseFloat(rate_to_usd), landedCostUsd, marketResults, localizedTitle 
       );
 
-      // 4. GESTIÓN MULTIMEDIA MEJORADA
-      let localImages = product.local_images || [];
-      let finalVideoUrl = product.video_url || null; 
+      if (!analysis.isWinner) {
+        console.log(` ⏩ [RECHAZADO] ROI: ${analysis.analysis?.estimatedRoi}% | ${analysis.analysis?.reasoning}`);
+        message.ack();
+        return;
+      }
 
-      if (analysis.isWinner) {
-        // PRIORIDAD 1: Video de AliExpress (si es válido)
-        // PRIORIDAD 2: Video Promocional vía Serper con Fallback
-        if (!finalVideoUrl || finalVideoUrl.includes('placeholder')) {
-          console.log(`🎥 Buscando video promocional de alta fidelidad para el ganador...`);
-          const searchTitle = analysis.copywriting?.title_localized || localizedTitle;
-          finalVideoUrl = await serper.getPromotionalVideo(searchTitle);
-        }
-        
-        const detail = product.raw_details;
-        if (detail?.images && (!localImages || localImages.length === 0)) {
-          console.log(`📸 Procesando imágenes para el ganador...`);
-          
-          // Mezclamos imágenes de AliExpress con una búsqueda de Estilo de Vida (Lifestyle)
-          const aliImages = detail.images.slice(0, 4);
-          const lifestyleSearch = analysis.copywriting?.title_localized || localizedTitle;
-          const extraImages = await serper.getLifestyleImages(lifestyleSearch);
-          
-          const combinedImages = [...aliImages, ...extraImages.slice(0, 2)];
+      // 6. Multimedia
+      let localImages: string[] = [];
+      let finalVideoUrl = await serper.getPromotionalVideo(analysis.copywriting?.title_localized || localizedTitle, detail.videoUrl);
+      
+      const lifestyleSearch = analysis.copywriting?.title_localized || localizedTitle;
+      const extraImages = await serper.getLifestyleImages(lifestyleSearch);
+      const combinedImages = [...detail.images.slice(0, 4), ...extraImages.slice(0, 2)];
 
-          localImages = await Promise.all(
-            combinedImages.slice(0, 6).map((url: string, i: number) => 
-              media.downloadAndUploadImage(url, dbId, i)
-            )
+      localImages = await Promise.all(
+        combinedImages.slice(0, 6).map((url, i) => media.downloadAndUploadImage(url, aliexpress_id, i))
+      );
+
+      // ==========================================================
+      // 7. PERSISTENCIA TRANSACCIONAL (ATÓMICA)
+      // ==========================================================
+      await client.query('BEGIN');
+
+      // --- 7.1 CATEGORÍA ---
+      let dbCategoryId = null; 
+      const rawCatId = detail.category_id;
+      if (rawCatId !== 'UNCATEGORIZED') {
+        const catRes = await client.query('SELECT id FROM categories WHERE ali_category_id = $1', [rawCatId]);
+        if (catRes.rows.length > 0) {
+          dbCategoryId = catRes.rows[0].id;
+        } else {
+          const newCat = await client.query(
+            'INSERT INTO categories (ali_category_id, name, slug) VALUES ($1, $2, $3) RETURNING id', 
+            [rawCatId, 'Categoría Nueva', `cat-${rawCatId}`]
           );
+          dbCategoryId = newCat.rows[0].id;
         }
       }
 
-      // 5. PERSISTENCIA FINAL
-      const updateQuery = `
-        UPDATE products SET 
-          status = $1, 
-          suggested_price_local = $2, 
-          net_margin_usd = $3, 
-          roi_percent = $4,
-          marketing_copy = $5, 
-          ai_verdict = $6, 
-          local_images = $7, 
-          video_url = $8,
-          competitor_avg_price = $10, 
-          updated_at = NOW()
-        WHERE id = $9;
+      // --- 7.2 PROVEEDOR ---
+      let dbSupplierId = null;
+      const rawSuppId = detail.supplier_id;
+      if (rawSuppId !== 'UNKNOWN_STORE') {
+        const suppRes = await client.query('SELECT id FROM suppliers WHERE aliexpress_store_id = $1', [rawSuppId]);
+        if (suppRes.rows.length > 0) {
+          dbSupplierId = suppRes.rows[0].id;
+        } else {
+          const newSupp = await client.query(
+            'INSERT INTO suppliers (aliexpress_store_id, store_name) VALUES ($1, $2) RETURNING id', 
+            [rawSuppId, detail.store_name]
+          );
+          dbSupplierId = newSupp.rows[0].id;
+        }
+      }
+      // --- PROCESAMIENTO DE ATRIBUTOS TÉCNICOS ---
+      // Aquí podríamos mapear detail.properties a una tabla de atributos técnicos si es necesario.// --- 7.3 PROCESAMIENTO DE ATRIBUTOS TÉCNICOS ---
+      const rawProperties = detail.properties || [];
+
+      if (rawProperties.length > 0) {
+          detail.properties = await gemini.translateAttributes(rawProperties, targetLang);
+        }
+
+      // --- 7.3 PRODUCTO ---
+      const insertQuery = `
+        INSERT INTO products (
+          batch_id, aliexpress_id, title_original, category_id, supplier_id,
+          image_url, video_url, local_images, base_cost_usd, shipping_cost_usd, 
+          suggested_price_local, suggested_price, roi_percent, net_margin_usd, 
+          vat_rate, rate_to_usd, target_country, status, marketing_copy, 
+          ai_verdict, raw_details
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, 'WINNER', $18, $19, $20)
+        ON CONFLICT (aliexpress_id, target_country) DO UPDATE SET 
+          updated_at = NOW(),
+          status = 'WINNER',
+          raw_details = EXCLUDED.raw_details
+        RETURNING id;
       `;
 
-      await pool.query(updateQuery, [
-        analysis.isWinner ? 'WINNER' : 'REJECTED_IA',
-        Number(analysis.suggestedPriceLocal) || 0,
-        Number(analysis.analysis?.netMarginUsd) || 0,
-        Number(analysis.analysis?.estimatedRoi) || 0,
-        JSON.stringify(analysis.copywriting || {}),
-        analysis.analysis?.reasoning || "Completado",
-        JSON.stringify(localImages),
-        finalVideoUrl,
-        dbId,
-        Number(marketResults[0]?.price) || 0
+      const productRes = await client.query(insertQuery, [
+        batchId, aliexpress_id, detail.title, dbCategoryId, dbSupplierId, 
+        detail.imageUrl || detail.images[0], finalVideoUrl, JSON.stringify(localImages),
+        detail.price, detail.shippingFee, 
+        analysis.analysis.suggestedPriceLocal,
+        (analysis.analysis.suggestedPriceLocal / parseFloat(rate_to_usd)),
+        analysis.analysis.estimatedRoi, analysis.analysis.netMarginUsd,
+        parseFloat(vat_rate), parseFloat(rate_to_usd), targetCountry,
+        JSON.stringify(analysis.copywriting), 
+        analysis.analysis.reasoning, 
+        JSON.stringify(detail)
       ]);
+      
+      const internalProductId = productRes.rows[0].id;
 
-      // 6. TELEMETRÍA DE NICHOS
-      if (product.niche_id && analysis.isWinner) {
-        await pool.query(`
-          INSERT INTO niche_stats (niche_id, winners_count, avg_roi)
-          VALUES ($1, 1, $2)
-          ON CONFLICT (niche_id) DO UPDATE SET 
-            winners_count = niche_stats.winners_count + 1,
-            avg_roi = (niche_stats.avg_roi + EXCLUDED.avg_roi) / 2,
-            recorded_at = NOW();
-        `, [product.niche_id, analysis.analysis?.estimatedRoi || 0]);
+      // ==========================================================
+      // 8. PERSISTENCIA DE VARIANTES (MAPEO ROBUSTO SKUDATA)
+      // ========================== ⚡ V6.0 ⚡ =====================
+      const skuData = detail.sku; 
+
+      if (skuData && skuData.props && skuData.base) {
+        // Mapa de Propiedades (Pid:Vid -> Metadata Legible)
+        const propsMap = new Map();
+        skuData.props.forEach((prop: any) => {
+          prop.values.forEach((val: any) => {
+            propsMap.set(`${prop.pid}:${val.vid}`, { 
+              name: prop.name, 
+              value: val.name,
+              image: val.image 
+            });
+          });
+        });
+
+        // Upsert de Combinaciones Reales
+        // Upsert de Combinaciones Reales
+        for (const variantBase of skuData.base) {
+          // ⚡ FIX: Guardián contra el crash de 'split' en productos sin variantes
+          const propPathRaw = variantBase.propMap || variantBase.propPath || "";
+          const propPaths = propPathRaw ? propPathRaw.split(';') : [];
+          
+          let colorName = null;
+          let sizeName = null;
+          let variantImage = variantBase.image || null;
+
+          // Solo iteramos si realmente hay propiedades (colores/tallas)
+          propPaths.forEach((path: string) => {
+            const info = propsMap.get(path);
+            if (info) {
+              // ID 14 = Color, ID 5 = Tamaño en Ali
+              if (path.startsWith('14:') || info.name.toLowerCase().includes('color')) {
+                colorName = info.value;
+                if (!variantImage) variantImage = info.image; 
+              } else {
+                sizeName = info.value;
+              }
+            }
+          });
+
+          // Aseguramos que el precio nunca sea NaN
+          const variantPriceUsd = parseFloat(variantBase.price || detail.price || '0');
+
+          await client.query(`
+            INSERT INTO product_variants (
+              product_id, ali_sku_id, color, size, stock, additional_cost_usd, image_url, is_active
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            ON CONFLICT (ali_sku_id) DO UPDATE SET 
+              color = EXCLUDED.color, 
+              size = EXCLUDED.size,
+              stock = EXCLUDED.stock,
+              additional_cost_usd = EXCLUDED.additional_cost_usd,
+              updated_at = NOW()
+          `, [
+            internalProductId, 
+            variantBase.skuId, 
+            colorName, // Quedará NULL si no hay variantes, lo cual es correcto
+            sizeName, 
+            variantBase.quantity || 0, 
+            variantPriceUsd, 
+            variantImage || detail.imageUrl || detail.images[0],
+            (Number(variantBase.quantity) > 0)
+          ]);
+        }
+        console.log(` 📦 [VARIANTS] ${skuData.base.length} variantes integradas/actualizadas.`);
       }
 
-      console.log(`✅ [${targetCountry}] Finalizado: ${localizedTitle} | Status: ${analysis.isWinner ? 'WINNER' : 'REJECTED'}`);
+      await client.query('COMMIT');
+      await redis.set(`global_proc:${aliexpress_id}`, '1', 'EX', 86400);
+      console.log(` ✅ [GANADOR] ${localizedTitle} (ROI: ${analysis.analysis.estimatedRoi}%)`);
       message.ack();
 
     } catch (error: any) {
-      console.error(`❌ Error Crítico Worker [ID: ${dbId}]:`, error.stack);
+      if (client) await client.query('ROLLBACK');
+      console.error(`❌ [ERROR CRÍTICO] ID ${aliexpress_id}:`, error.message);
       message.ack(); 
+    } finally {
+      client.release(); 
     }
   });
 }
 
-listenForCandidates().catch(error => {
-  console.error("🚨 Error al iniciar el Worker:", error);
-  process.exit(1);
-});
+listenForCandidates();

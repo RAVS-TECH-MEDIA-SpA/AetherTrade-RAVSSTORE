@@ -11,51 +11,79 @@ import { DashboardDataService } from '../../shared/services/dashboard-data.servi
   templateUrl: './scouting.component.html'
 })
 export class ScoutingComponent implements OnInit {
-  nichosSeleccionados: string[] = [];
-  textoInput: string = '';
-  selectedNicheLimit: number = 5;  // Amplitud
-  selectedEliteLimit: number = 10; // Profundidad
-  isAnalyzing: boolean = false;
-  totalEstimatedCredits: number = 0;
-  logs: { time: string, msg: string, type: string }[] = [];
+  // --- ESTADO DE UI ---
+  public nichosSeleccionados: string[] = [];
+  public textoInput: string = '';
+  public selectedNicheLimit: number = 5;  // Amplitud
+  public selectedEliteLimit: number = 10; // Profundidad
+  
+  // Renombrado a isProcessing para coincidir con el error TS2339 del HTML
+  public isProcessing: boolean = false; 
+  
+  public totalEstimatedCredits: number = 0;
+  public logs: { time: string, msg: string, type: string }[] = [];
 
   constructor(private dataService: DashboardDataService) {}
 
   ngOnInit(): void { 
     this.recalcularCuota();
-    this.addLog('Aether-Core Terminal V3.4.4 inicializada.', 'system'); 
+    this.addLog('Aether-Core Terminal V3.5.0 inicializada en Cabrero.', 'system'); 
   }
 
-  recalcularCuota(): void {
+  /**
+   * Calcula el peor escenario de gasto. 
+   * Fórmula: Nichos + (Nichos * Profundidad)
+   */
+  public recalcularCuota(): void {
     const n = Number(this.nichosSeleccionados.length > 0 ? this.nichosSeleccionados.length : this.selectedNicheLimit);
     const e = Number(this.selectedEliteLimit);
     this.totalEstimatedCredits = n + (n * e);
   }
 
-  agregarTag(): void {
-    if (this.textoInput && this.nichosSeleccionados.length < this.selectedNicheLimit) {
-      this.nichosSeleccionados.push(this.textoInput.replace(';', '').trim());
-      this.textoInput = '';
-      this.recalcularCuota();
+  public agregarTag(): void {
+    if (this.textoInput) {
+      // Limpiamos el punto y coma y posibles espacios
+      const tag = this.textoInput.replace(';', '').trim();
+      if (tag && !this.nichosSeleccionados.includes(tag)) {
+        this.nichosSeleccionados.push(tag);
+        this.textoInput = '';
+        this.recalcularCuota();
+      }
     }
   }
 
-  onNewAnalysis(): void {
-    if (this.totalEstimatedCredits > 100) return;
-    this.isAnalyzing = true;
+  /**
+   * TRIGGER: Dispara la ráfaga al Gateway.
+   * Eliminado el bloqueo estricto de > 100 créditos para permitir modo Admin.
+   */
+  public triggerAnalysis(): void {
+    // 1. Evitar doble disparo
+    if (this.isProcessing) return;
+    
+    // 2. Alerta de Seguridad (Soft Warning)
+    if (this.totalEstimatedCredits > 150) {
+      const confirmacion = confirm(`⚠️ El estimado es de ${this.totalEstimatedCredits} créditos. ¿Deseas proceder con esta ráfaga de alto consumo?`);
+      if (!confirmacion) return;
+    }
+
+    this.isProcessing = true;
     const niches = this.nichosSeleccionados.join(';');
-    this.addLog(`Scouting iniciado: ${niches || 'Modo Auto'}`, 'info');
+    
+    this.addLog(`🚀 Scouting iniciado: ${niches || 'Generación Dinámica IA'}`, 'info');
+    this.addLog(`📊 Créditos Estimados: ${this.totalEstimatedCredits}`, 'system');
     
     this.dataService.triggerManualAnalysis(niches, 'CL', this.selectedNicheLimit, this.selectedEliteLimit)
       .subscribe({
-        next: () => {
-          this.addLog('Tarea encolada en Pub/Sub. Créditos: -' + this.totalEstimatedCredits, 'success');
-          this.isAnalyzing = false;
-          this.nichosSeleccionados = [];
+        next: (res: any) => {
+          this.addLog(`✅ Batch ${res.batchId || 'N/A'} encolado exitosamente.`, 'success');
+          this.isProcessing = false;
+          this.nichosSeleccionados = []; // Limpiamos para el próximo lote
+          this.recalcularCuota();
         },
         error: (err) => {
-          this.addLog(`Error: ${err.error?.error || 'Worker offline'}`, 'error');
-          this.isAnalyzing = false;
+          const errMsg = err.error?.error || 'Gateway Timeout / Connection Refused';
+          this.addLog(`🚨 ERROR: ${errMsg}`, 'error');
+          this.isProcessing = false;
         }
       });
   }
