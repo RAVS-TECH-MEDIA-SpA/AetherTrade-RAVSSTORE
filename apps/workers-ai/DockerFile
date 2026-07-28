@@ -1,34 +1,34 @@
-# 1. ETAPA DE CONSTRUCCIÓN
+# ETAPA 1: Builder
 FROM node:20-slim AS builder
 WORKDIR /app
 
-# Copiamos los package.json del ROOT y de la APP (Importante en Monorepos)
+# Copiamos archivos de configuración
 COPY package*.json ./
 COPY apps/workers-ai/package*.json ./apps/workers-ai/
 
-# Instalamos dependencias desde la raíz (para que NPM Workspaces funcione)
+# Instalamos todo en el builder
 RUN npm install
 
-# Copiamos el código de la app
-COPY apps/workers-ai/ ./apps/workers-ai/
-
-# Compilamos la app específica
+# Copiamos el resto del código
+COPY . . 
 WORKDIR /app/apps/workers-ai
 RUN npx tsc
 
-# 2. ETAPA DE EJECUCIÓN
-FROM node:20-slim AS runner
+# ETAPA 2: Producción
+FROM node:20-slim
 WORKDIR /app
 ENV NODE_ENV=production
 
-# Copiamos solo lo necesario para ejecutar
-COPY --from=builder /app/apps/workers-ai/package*.json ./
-COPY --from=builder /app/apps/workers-ai/dist ./dist
+# Copiamos los package.json de nuevo
+COPY package*.json ./
+COPY apps/workers-ai/package*.json ./apps/workers-ai/
 
-# Instalamos solo dependencias de producción
+# INSTALACIÓN LIMPIA: Esto asegura que todas las dependencias estén presentes
 RUN npm install --omit=dev
 
-USER node
-EXPOSE 8080
-ENV PORT 8080
-CMD ["npm", "start"]
+# Copiamos solo el código fuente y el dist desde el builder
+COPY --from=builder /app/apps/workers-ai/src ./src
+COPY --from=builder /app/apps/workers-ai/dist ./dist
+
+# Ejecutamos el worker
+CMD ["npx", "tsx", "src/workers/analysis.worker.ts"]

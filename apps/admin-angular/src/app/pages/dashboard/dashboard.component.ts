@@ -55,7 +55,7 @@ export class DashboardComponent implements OnInit {
   }
 
   /**
-   * Carga y procesa la data real de los 77 productos en la DB
+   * Carga y procesa la data real de los productos en la DB
    */
   loadAnalytics(): void {
     this.dataService.getInventory().subscribe(products => {

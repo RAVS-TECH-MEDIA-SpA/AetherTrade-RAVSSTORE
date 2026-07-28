@@ -1,5 +1,5 @@
 // api-gateway/src/products/product-sync.service.ts
-import {pool} from '../database';
+import {pool} from '../database.js';
 
 export const syncVariantsFromRaw = async (productId: string, rawDetails: any) => {
   const skuData = rawDetails.sku;

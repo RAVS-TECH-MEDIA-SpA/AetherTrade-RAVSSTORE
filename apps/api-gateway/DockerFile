@@ -1,17 +1,43 @@
-# Stage 1: Build
-FROM node:20-alpine AS builder
+# --- ETAPA 1: Compilación (Builder) ---
+FROM node:20-slim AS builder
+
+# Definir el directorio de trabajo en la raíz del contenedor
 WORKDIR /app
+
+# Copiar archivos de configuración de dependencias de la raíz y de la app
+# (Esto ayuda a aprovechar la caché de Docker)
 COPY package*.json ./
+COPY apps/api-gateway/package*.json ./apps/api-gateway/
+
+# Instalar todas las dependencias (incluyendo las de desarrollo para compilar)
 RUN npm install
-COPY . .
+
+# Copiar el código fuente de la API Gateway
+COPY apps/api-gateway ./apps/api-gateway
+
+# Cambiar al directorio de la app y compilar TypeScript
+WORKDIR /app/apps/api-gateway
 RUN npm run build
 
-# Stage 2: Run
-FROM node:20-alpine
-WORKDIR /app
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/package*.json ./
+# --- ETAPA 2: Ejecución (Runner) ---
+FROM node:20-slim
 
-EXPOSE 3000
+WORKDIR /app
+
+# Variable de entorno para producción
+ENV NODE_ENV=production
+
+# Copiar solo lo necesario desde la etapa de compilación
+# Corregimos la ruta: apuntamos a api-gateway, NO a workers-ai
+COPY --from=builder /app/apps/api-gateway/dist ./dist
+COPY --from=builder /app/apps/api-gateway/package*.json ./
+
+# Instalar solo dependencias de producción para ahorrar espacio
+RUN npm install --omit=dev
+
+# Cloud Run usa el puerto 8080 por defecto. 
+# Tu código de Express debe escuchar en process.env.PORT || 8080
+EXPOSE 8080
+
+# Comando para arrancar la API
 CMD ["node", "dist/server.js"]

@@ -1,15 +1,13 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { VertexAI } from "@google-cloud/vertexai";
 import path from 'path';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
-// CORRECCIÓN: Si están en la misma carpeta services, es './constants'
 import { MARKET_CONFIG, GLOBAL_MARKUP } from './constants.js'; 
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 if (process.env.NODE_ENV !== 'production') {
-  // Ajustamos la ruta del .env para que suba los niveles correctos desde el gateway
   dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 }
 
@@ -22,8 +20,13 @@ interface Competitor {
 }
 
 export class GeminiService {
-  private genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
-  private model = this.genAI.getGenerativeModel({ 
+  // Inicialización mediante Vertex AI compartiendo las credenciales
+  private vertexAI = new VertexAI({
+    project: process.env.GOOGLE_CLOUD_PROJECT || 'aethertrade-core',
+    location: 'us-central1'
+  });
+
+  private model = this.vertexAI.getGenerativeModel({ 
     model: "gemini-2.5-flash",
     generationConfig: { 
       responseMimeType: "application/json",
@@ -63,7 +66,7 @@ export class GeminiService {
 
     try {
       const result = await this.model.generateContent(prompt);
-      const text = result.response.text();
+      const text = result.response.candidates?.[0]?.content?.parts?.[0]?.text || '';
       
       const startJson = text.indexOf('[');
       const endJson = text.lastIndexOf(']') + 1;

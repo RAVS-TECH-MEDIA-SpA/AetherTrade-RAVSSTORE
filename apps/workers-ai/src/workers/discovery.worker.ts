@@ -15,10 +15,10 @@ if (process.env.NODE_ENV !== 'production') {
   dotenv.config({ path: path.resolve(__dirname, '../../../../.env') });
 }
 
-const pubsub = new PubSub();
+export const pubsub = new PubSub({
+  projectId: process.env.PUBSUB_PROJECT_ID || 'aethertrade-local'
+});
 const aliService = new AliExpressService();
-
-// Nota: GeminiService ya no es necesario aquí, la lógica de "cerebro" reside en el Gateway.
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -198,31 +198,3 @@ async function triggerGlobalRanking(batchId: string, country: string, eliteLimit
     console.error("🚨 [RANKING ERROR]:", error);
   }
 }
-
-/**
- * LISTENER DE TAREAS
- */
-async function listenForDiscoveryTasks() {
-  const subscription = pubsub.subscription('discovery-tasks-sub');
-  console.log("📡 Discovery Worker V4.7 (Pure Execution) | Escuchando...");
-
-  subscription.on('message', async (message) => {
-    try {
-      const rawData = JSON.parse(message.data.toString());
-      const bId = rawData.batchId || rawData.batch_id; 
-
-      if (!bId || !rawData.niche) {
-        console.warn("⚠️ Mensaje ignorado: Falta BatchID o Nicho.");
-        return message.ack(); 
-      }
-
-      await runDiscoveryTask(bId, rawData.niche, rawData.country, rawData.eliteLimit);
-      message.ack();
-    } catch (err) {
-      console.error("🚨 Error procesando mensaje:", err);
-      message.ack();
-    }
-  });
-}
-
-listenForDiscoveryTasks();

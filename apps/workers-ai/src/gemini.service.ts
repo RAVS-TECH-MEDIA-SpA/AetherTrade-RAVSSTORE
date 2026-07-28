@@ -1,9 +1,8 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { VertexAI } from "@google-cloud/vertexai";
 import path from 'path';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
-import { MARKET_CONFIG, GLOBAL_MARKUP } from '../src/config/constants.js';
-
+import { MARKET_CONFIG } from './config/constants.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -21,8 +20,13 @@ interface Competitor {
 }
 
 export class GeminiService {
-  private genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
-  private model = this.genAI.getGenerativeModel({ 
+  // Inicialización mediante Vertex AI (Usa automáticamente GOOGLE_APPLICATION_CREDENTIALS)
+  private vertexAI = new VertexAI({
+    project: process.env.GOOGLE_CLOUD_PROJECT || 'aethertrade-core',
+    location: 'us-central1' // Región por defecto recomendada para Vertex AI
+  });
+
+  private model = this.vertexAI.getGenerativeModel({ 
     model: "gemini-2.5-flash", 
     generationConfig: { 
       responseMimeType: "application/json",
@@ -39,11 +43,13 @@ export class GeminiService {
     Lista: ${JSON.stringify(attributes)}`;
     
     const result = await this.model.generateContent(prompt);
-    return JSON.parse(result.response.text().replace(/```json|```/g, ""));
+    // Extraemos el texto de la respuesta (la API es compatible con la versión anterior)
+    const textResult = result.response.candidates?.[0]?.content?.parts?.[0]?.text || '[]';
+    return JSON.parse(textResult.replace(/```json|```/g, ""));
   }
 
   async translateForSearch(title: string, targetLang: string): Promise<string> {
-   const prompt = `
+    const prompt = `
         TAREA: Refactorizar títulos de productos para SEO de e-commerce.
         ORIGINAL: ${title}
         IDIOMA OBJETIVO: ${targetLang}
@@ -60,7 +66,8 @@ export class GeminiService {
     
     try {
       const result = await this.model.generateContent(prompt);
-      return result.response.text().trim();
+      const textResult = result.response.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      return textResult.trim();
     } catch (error) {
       return title.split(' ').slice(0, 3).join(' ');
     }
@@ -139,7 +146,8 @@ export class GeminiService {
 
     try {
       const result = await this.model.generateContent(prompt);
-      const cleanJson = result.response.text().replace(/```json|```/g, "").trim();
+      const textResult = result.response.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
+      const cleanJson = textResult.replace(/```json|```/g, "").trim();
       const parsed = JSON.parse(cleanJson);
       
       // Adaptación de nombres si Gemini usa description en lugar de description_localized
@@ -151,8 +159,17 @@ export class GeminiService {
         ...parsed,
         landedCostUsd
       };
-    } catch (error) {
-      console.error("❌ Error parseando Gemini Arbitrage:", error);
+    } catch (error: any) {
+      console.error("❌ Error parseando Gemini Arbitrage:", error.message || error);
+      
+      // ⚡ ESTA ES LA LÍNEA MÁGICA QUE FALTABA
+      // Si el error dice 429 (Resource exhausted), lo disparamos hacia arriba 
+      // para que el Worker (analysis.worker.ts) haga la pausa de 15s y reintente.
+      if (error.message && error.message.includes('429')) {
+        throw error; 
+      }
+
+      // Si es un error normal de formateo JSON, devolvemos un ganador fallido
       return { isWinner: false, analysis: { suggestedPriceLocal: 0, estimatedRoi: 0, netMarginUsd: 0 }, copywriting: {} };
     }
   }

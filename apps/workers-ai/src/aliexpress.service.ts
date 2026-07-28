@@ -87,15 +87,19 @@ export class AliExpressService {
     const ms = Math.floor(Math.random() * (max - min + 1)) + min;
     return new Promise(resolve => setTimeout(resolve, Math.max(ms, 1000)));
   }
- /**
+
+  /**
    * FASE 1: Búsqueda (Discovery Worker)
    */
   async searchTrending(niche: string, country: string, maxPages: number = 1): Promise<AliProductBase[]> {
+    console.log(`⏳ [searchTrending] Consultando RapidAPI: ...`);
+
     if (!this.apiKey) return [];
     let allRawItems: any[] = [];
     
     try {
       for (let p = 1; p <= maxPages; p++) {
+        console.log(`⏳ [searchTrending] Consultando RapidAPI: Page ${p}`);
         await this.wait();
         const options = {
           method: 'GET',
@@ -113,7 +117,10 @@ export class AliExpressService {
         };
 
         console.log(`⏳ [SEARCH PAGE ${p}] Consultando RapidAPI: "${niche}"...`);
+        console.log(`⏳ [SEARCH PAGE ] Consultando options: "${JSON.stringify(options)}"...`);
+
         const response = await axios.request(options);
+        console.log(`⏳ [SEARCH PAGE ] Consultando response recibido`);
         const pageItems = response.data?.result?.resultList || [];
         
         if (pageItems.length === 0) break;
@@ -150,14 +157,18 @@ export class AliExpressService {
   /**
    * FASE 2: Detalle Profundo (Analysis Worker)
    */
+  /**
+   * FASE 2: Detalle Profundo (Analysis Worker)
+   */
   async getItemDetail(itemId: string): Promise<AliProductDetail | null> {
     if (!this.apiKey) return null;
     try {
       await this.wait();
       
+      // ⚡ ACTUALIZADO AL ENDPOINT V3
       const options = {
         method: 'GET',
-        url: `https://${this.host}/item_detail_2`,
+        url: `https://${this.host}/item_detail_6`, 
         params: { itemId },
         headers: { 'x-rapidapi-key': this.apiKey, 'x-rapidapi-host': this.host },
         timeout: 15000
@@ -167,7 +178,7 @@ export class AliExpressService {
       const data = response.data?.result;
       
       if (!data || !data.item) {
-        console.warn(`⚠️ [DETAIL] No se encontró info para ID: ${itemId}`);
+        console.warn(`⚠️ [DETAIL] No se encontró info para ID: ${itemId}. Respuesta API:`, JSON.stringify(response.data));
         return null;
       }
 
@@ -176,9 +187,10 @@ export class AliExpressService {
       let extraImages: string[] = [];
 
       try {
+        // ⚡ ACTUALIZADO AL ENDPOINT V2 DE DESCRIPCIÓN
         const descOptions = {
           method: 'GET',
-          url: `https://${this.host}/item_desc`,
+          url: `https://${this.host}/item_desc_2`,
           params: { itemId },
           headers: { 'x-rapidapi-key': this.apiKey, 'x-rapidapi-host': this.host },
           timeout: 10000

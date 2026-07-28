@@ -1,12 +1,14 @@
+version: '3.8'
+
 services:
   # 1. La Fuente de Verdad (Postgres)
   db:
     image: postgres:15-alpine
     container_name: aether_db
     environment:
-      POSTGRES_USER: ${DB_USER}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
-      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_DB: ${DB_NAME:-aethertrade}
     ports:
       - "5432:5432"
     volumes:
@@ -15,43 +17,110 @@ services:
     networks:
       - aether-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-aethertrade}"]
       interval: 5s
       timeout: 5s
       retries: 5
 
-  # 2. Orquestador de Tráfico (Express)
-  api-gateway:
-    build: ./apps/api-gateway
-    container_name: aether_gateway
-    depends_on:
-      db:
-        condition: service_healthy
-    environment:
-      - DATABASE_URL=postgres://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_NAME}
-      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
+  # 2. Caché y Colas Asíncronas (Redis)
+  redis:
+    image: redis:7-alpine
+    container_name: aether_redis
     ports:
-      - "3000:3000"
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - aether-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # 3. Emulador Local de Google Cloud Pub/Sub
+  pubsub:
+    image: gcr.io/google.com/cloudsdktool/google-cloud-cli:emulators
+    container_name: aether_pubsub
+    command: gcloud beta emulators pubsub start --project=aethertrade-local --host-port=0.0.0.0:8085
+    ports:
+      - "8085:8085"
     networks:
       - aether-network
 
-  # 3. El Trabajador de IA (Scraping + Gemini)
+  # 🚀 NUEVO: Emulador Local de Google Cloud Storage
+  gcs-emulator:
+    image: fsouza/fake-gcs-server:latest
+    container_name: aether_gcs
+    ports:
+      - "4443:4443"
+    command: -scheme http -public-host localhost:4443
+    networks:
+      - aether-network
+
+  # 4. El Trabajador de IA
   workers-ai:
-    build: ./apps/workers-ai
+    build: 
+      context: .
+      dockerfile: apps/workers-ai/Dockerfile
     container_name: aether_worker
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_healthy
+      pubsub:
+        condition: service_started
+      gcs-emulator:
+        condition: service_started # ⚡ El emulador de GCS debe estar arriba antes que el Worker
     environment:
+      - PUBSUB_EMULATOR_HOST=pubsub:8085
+      - PUBSUB_PROJECT_ID=aethertrade-local
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - DATABASE_URL=postgres://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@db:5432/${DB_NAME:-aethertrade}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
-      - GOOGLE_SEARCH_API_KEY=${GOOGLE_SEARCH_API_KEY}
-      - GOOGLE_SEARCH_CX=${GOOGLE_SEARCH_CX}
+      - SERPER_API_KEY=${SERPER_API_KEY}
       - RAPID_API_KEY=${RAPID_API_KEY}
-      - DB_USER=${DB_USER}
-      - DB_PASSWORD=${DB_PASSWORD}
-      - DB_NAME=${DB_NAME}
-      - DB_HOST=db
-      - DB_PORT=5432
+      # --- CORRECCIÓN DE RUTA DE CREDENCIALES ---
+      - GOOGLE_APPLICATION_CREDENTIALS=/secrets/aether-gcp-credentials.json
+      - GOOGLE_CLOUD_PROJECT=aethertrade-core
+      # ⚡ VARIABLE MAGICA: Redirige las llamadas de GCS al emulador local
+      - STORAGE_EMULATOR_HOST=http://gcs-emulator:4443
+    volumes:
+      - ./secrets:/secrets:ro
+    networks:
+      - aether-network
+
+  # 5. API Gateway
+  api-gateway:
+    build: 
+      context: .
+      dockerfile: apps/api-gateway/Dockerfile 
+    container_name: aether_api_gateway
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      gcs-emulator:
+        condition: service_started # ⚡ También blindamos el Gateway por si descarga imágenes
+    environment:
+      - DATABASE_URL=postgres://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@db:5432/${DB_NAME:-aethertrade}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      # --- CORRECCIÓN DE RUTA DE CREDENCIALES ---
+      - GOOGLE_APPLICATION_CREDENTIALS=/secrets/aether-gcp-credentials.json
+      - GOOGLE_CLOUD_PROJECT=aethertrade-core
+      - PUBSUB_EMULATOR_HOST=pubsub:8085
+      - PUBSUB_PROJECT_ID=aethertrade-local
+      - RAPID_API_KEY=${RAPID_API_KEY}
+      # ⚡ VARIABLE MAGICA: Redirige las llamadas de GCS al emulador local
+      - STORAGE_EMULATOR_HOST=http://gcs-emulator:4443
+    volumes:
+      - ./secrets:/secrets:ro
     networks:
       - aether-network
 
@@ -61,3 +130,4 @@ networks:
 
 volumes:
   postgres_data:
+  redis_data:

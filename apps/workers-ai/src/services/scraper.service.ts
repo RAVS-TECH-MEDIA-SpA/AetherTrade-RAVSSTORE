@@ -25,11 +25,11 @@ export class ScraperService {
   private readonly MARKET_MAP: Record<string, MarketConfig> = {
     'CL': {
       currency: '$', 
-      localisms: '("despacho gratis" OR "entrega inmediata" OR "envío a regiones" OR "cmr")',
-      keywords: 'precio comprar oferta',
-      sites: ['mercadolibre.cl', 'falabella.com', 'paris.cl', 'lider.cl', 'ripley.cl', 'sodimac.cl', 'knasta.cl'],
-      minValidPrice: 2500 // Evitamos accesorios o repuestos pequeños
-    },
+      localisms: 'despacho gratis entrega', // ⚡ Quitado los paréntesis y OR
+      keywords: 'precio comprar',
+      sites: ['mercadolibre.cl', 'falabella.com', 'paris.cl', 'lider.cl', 'sodimac.cl'],
+      minValidPrice: 2500
+  },
     'MX': {
       currency: '$', 
       localisms: '("envío gratis" OR "meses sin intereses" OR "entrega hoy")',
@@ -53,12 +53,12 @@ export class ScraperService {
   /**
    * Purifica el nombre para evitar que el ruido de AliExpress afecte el SEO en Google
    */
+ // 2. Haz el limpiador más agresivo
   public cleanProductName(name: string): string {
     if (!name) return "";
     return name
-      .replace(/(202[0-9]|New|Global|Original|Portable|Mini|Hot Sale|Stock|SKU|Piece|Lot|Latest|High Quality|Professional|Official|Xiaomi|Apple|Samsung)/gi, '')
-      .replace(/[0-9]+x[0-9]+/g, '')
-      .replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚ ]/g, '')
+      .replace(/(202[0-9]|New|Global|Original|Portable|Mini|Hot Sale|Stock|SKU|Piece|Lot)/gi, '')
+      .replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ ]/g, ' ') // ⚡ Cambiado a espacio en vez de vacío
       .split(' ')
       .filter(word => word.length > 2)
       .slice(0, 4) 
@@ -95,17 +95,16 @@ export class ScraperService {
     return (price >= minPrice) ? price : 0;
   }
 
-  private buildQuery(name: string, country: string): string {
+ private buildQuery(name: string, country: string): string {
     const config = this.MARKET_MAP[country.toUpperCase()] || this.MARKET_MAP['US'];
     const cleanName = this.cleanProductName(name);
     
-    // Excluimos sitios chinos y dominios que ensucian el benchmark local
-    const exclusions = "-site:aliexpress.com -site:alibaba.com -site:temu.com -site:shopee.cl";
+    // ⚡ SIMPLIFICADO: En vez de un string gigante con OR, usamos una búsqueda limpia y directa.
+    // Ejemplo: "Foco LED IP68 Exterior precio comprar chile -site:aliexpress.com"
+    const countryName = country.toUpperCase() === 'CL' ? 'chile' : country.toUpperCase() === 'MX' ? 'mexico' : '';
+    const exclusions = "-site:aliexpress.com -site:alibaba.com -site:temu.com";
     
-    // Forzamos la búsqueda en los sitios líderes del país
-    const sitesQuery = config.sites.map(s => `site:${s}`).join(' OR ');
-    
-    return `${cleanName} (${sitesQuery}) ${config.currency} ${config.localisms} ${exclusions}`;
+    return `${cleanName} ${config.keywords} ${countryName} ${exclusions}`.trim();
   }
 
   async getCompetitorPrices(productName: string, country: string) {

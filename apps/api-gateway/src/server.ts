@@ -1,12 +1,14 @@
 // apps/api-gateway/src/server.ts
-import app from './app';
+import app from './app.js';
 
-const PORT = process.env.API_GATEWAY_PORT || 3001;
 
-app.listen(PORT, () => {
-  console.log(`
+
+const port = process.env.PORT || 8080;
+
+app.listen(Number(port), '0.0.0.0', () => {
+   console.log(`
   🚀 Aether Trade API-Gateway lista
-  📡 Escuchando en: http://localhost:${PORT}
+  📡 Escuchando en: http://localhost:${port}
   📍 Entorno: Cabrero, Biobío
   `);
 });

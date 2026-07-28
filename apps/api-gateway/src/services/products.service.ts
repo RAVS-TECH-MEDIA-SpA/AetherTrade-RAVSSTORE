@@ -1,13 +1,13 @@
 import { Injectable, Inject, NotFoundException, Logger } from '@nestjs/common';
-import { Pool } from 'pg';
+// import { Pool } from 'pg';
+import {pool} from '../database.js'; // Asegúrate que esta ruta apunte a tu pool de pg
+
 
 @Injectable()
 export class ProductsService {
 
   private readonly logger = new Logger(ProductsService.name);
-  constructor(@Inject('DATABASE_POOL') private pool: Pool) {}
 
-// apps/api-gateway/src/services/products.service.ts
 
 async findByAliExpressId(id: string) {
   const query = `
@@ -28,7 +28,7 @@ async findByAliExpressId(id: string) {
     WHERE p.aliexpress_id::text = $1
     LIMIT 1;
   `;
-  const res = await this.pool.query(query, [id]);
+  const res = await pool.query(query, [id]);
   return res.rows[0];
 }
 
@@ -43,7 +43,7 @@ async findByAliExpressId(id: string) {
       ORDER BY p.updated_at DESC;
     `;
     
-    const res = await this.pool.query(query, [slug]);
+    const res = await pool.query(query, [slug]);
     return res.rows;
   }
 
@@ -56,7 +56,7 @@ async findByAliExpressId(id: string) {
       WHERE status = $1 AND target_country = $2
       ORDER BY updated_at DESC;
     `;
-    const res = await this.pool.query(query, [status, country]);
+    const res = await pool.query(query, [status, country]);
     return res.rows;
   }
 }

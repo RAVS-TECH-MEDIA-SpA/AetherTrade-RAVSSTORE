@@ -1,5 +1,5 @@
 // api-gateway/src/products/products.service.ts
-import {pool} from '../database'; // Asegúrate que esta ruta apunte a tu pool de pg
+import {pool} from '../database.js'; // Asegúrate que esta ruta apunte a tu pool de pg
 
 /**
  * Obtiene un producto por su AliExpress ID

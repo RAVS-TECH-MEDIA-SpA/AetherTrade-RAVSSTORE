@@ -1,14 +1,37 @@
 import { Request, Response } from 'express';
-import { pool } from '../database';
+import { pool } from '../database.js';
 import { PubSub } from '@google-cloud/pubsub';
 // NOTA: Debes copiar estos archivos desde workers-ai a tu carpeta del gateway
-import { GeminiService } from '../services/gemini.service'; 
+import { GeminiService } from '../services/gemini.service.js'; 
 
-import { findByAliExpressId } from '../products/products.service';
-import { syncVariantsFromRaw } from '../products/product-sync.service';
+import { findByAliExpressId } from '../products/products.service.js';
+import { syncVariantsFromRaw } from '../products/product-sync.service.js';
 
-const pubsub = new PubSub();
+export const pubsub = new PubSub({
+  projectId: process.env.PUBSUB_PROJECT_ID || 'aethertrade-local'
+});
 const gemini = new GeminiService();
+
+const topicName = 'candidate-analysis-2';
+const subscriptionName = 'candidate-analysis-sub-2';
+
+
+
+async function initPubSub() {
+  try {
+    await pubsub.createTopic(topicName);
+    console.log(`[PUBSUB] Tópico verificado/creado.`);
+  } catch (err: any) {
+    if (err.code !== 6) console.error(err); // 6 = ALREADY_EXISTS
+  }
+
+  try {
+    await pubsub.topic(topicName).createSubscription(subscriptionName);
+    console.log(`[PUBSUB] Suscripción verificada/creada.`);
+  } catch (err: any) {
+    if (err.code !== 6) console.error(err);
+  }
+}
 
 /**
  * Obtiene KPIs, Gráficos y métricas de negocio actualizadas según el Glosario
@@ -101,17 +124,17 @@ export const getDashboardStats = async (req: Request, res: Response) => {
     res.json({ 
       kpis, 
       countrySales: {
-        labels: countryResult.rows.map(r => r.label || 'N/A'),
+        labels: countryResult.rows.map((r: { label: any; }) => r.label || 'N/A'),
         datasets: [{
-          data: countryResult.rows.map(r => r.value),
+          data: countryResult.rows.map((r: { value: any; }) => r.value),
           backgroundColor: ['#3fb950', '#2188ff', '#f1e05a', '#f85149', '#8957e5']
         }]
       },
       trends: {
-        labels: trendsResult.rows.map(r => r.month),
+        labels: trendsResult.rows.map((r: { month: any; }) => r.month),
         datasets: [
-          { label: 'Winners Found', data: trendsResult.rows.map(r => r.winners), color: '#3fb950' },
-          { label: 'Avg ROI %', data: trendsResult.rows.map(r => r.roi), color: '#2188ff' }
+          { label: 'Winners Found', data: trendsResult.rows.map((r: { winners: any; }) => r.winners), color: '#3fb950' },
+          { label: 'Avg ROI %', data: trendsResult.rows.map((r: { roi: any; }) => r.roi), color: '#2188ff' }
         ]
       }
     });
@@ -136,7 +159,7 @@ export const getInventory = async (req: Request, res: Response) => {
       LEFT JOIN exchange_rates er ON t.currency_code = er.currency_code
       WHERE 1=1
     `;
-    const params = [];
+    const params: (string | number | any)[] = [];
 
     if (status) {
       params.push(status);
@@ -251,8 +274,10 @@ export const updateProduct = async (req: Request, res: Response) => {
  * Trigger al Worker AI con Solución de Bucle de Ráfaga y Generación Centralizada
  */
 export const triggerAnalysis = async (req: Request, res: Response) => {
+  await initPubSub(); // Asegura que el tópico y la suscripción existan antes de publicar
   const { niches, country, nicheLimit, eliteLimit } = req.body; 
-  const TOPIC_NAME = 'discovery-tasks';
+  console.log(`🚀 [GATEWAY] Trigger recibido: Niches=${niches}, Country=${country}, NicheLimit=${nicheLimit}, EliteLimit=${eliteLimit}`);
+  // const TOPIC_NAME = 'discovery-tasks';
 
   try {
     // 1. Preparación de variables de control
@@ -283,7 +308,7 @@ export const triggerAnalysis = async (req: Request, res: Response) => {
       
       // Obtenemos historial de caché para evitar repeticiones
       const recentRes = await pool.query('SELECT niche_text FROM niche_cache ORDER BY created_at DESC LIMIT 50');
-      const excluded = recentRes.rows.map(r => r.niche_text);
+      const excluded = recentRes.rows.map((r: { niche_text: any; }) => r.niche_text);
 
       // LLAMADA ÚNICA: Gemini genera el array completo de una vez
       finalNiches = await gemini.generateDynamicNiches(targetCountry, effectiveNicheCount, excluded);
@@ -312,7 +337,10 @@ export const triggerAnalysis = async (req: Request, res: Response) => {
       };
 
       const dataBuffer = Buffer.from(JSON.stringify(messageData));
-      return pubsub.topic(TOPIC_NAME).publishMessage({ data: dataBuffer });
+      console.log(`📤 [GATEWAY] Enviando tarea de nicho: "${nicheName}" al Worker...`);
+      console.log(`📤 [GATEWAY] Payload: ${JSON.stringify(messageData)}`);
+      console.log(`📤 [GATEWAY] DataBuffer: ${dataBuffer.toString()}`);
+      return pubsub.topic(topicName).publishMessage({ data: dataBuffer });
     });
 
     // 5. Confirmación de envío masivo

@@ -8,8 +8,11 @@ import { MediaService } from '../services/media.services.js';
 import { SerperService } from '../services/serper.service.js';
 import { AliExpressService } from '../aliexpress.service.js';
 import { MARKET_CONFIG } from '../config/constants.js';
+import { runDiscoveryTask } from '../workers/discovery.worker.js';
 
-const pubsub = new PubSub();
+export const pubsub = new PubSub({
+  projectId: process.env.PUBSUB_PROJECT_ID || 'aethertrade-local'
+});
 const aliService = new AliExpressService();
 const gemini = new GeminiService();
 const competitorService = new CompetitorService();
@@ -20,14 +23,61 @@ const serper = new SerperService();
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, Math.max(ms, 0)));
 
 export async function listenForCandidates() {
-  const subscription = pubsub.subscription('candidate-analysis-sub-2', {
+  const topicName = 'candidate-analysis-2';
+  const subscriptionName = 'candidate-analysis-sub-2';
+
+  // ==========================================
+  // 1. VALIDACIÓN E INICIALIZACIÓN DE PUBSUB
+  // ==========================================
+  const topic = pubsub.topic(topicName);
+  const [topicExists] = await topic.exists();
+  
+  if (!topicExists) {
+    console.log(`⚠️ Tópico no encontrado. Creando [${topicName}]...`);
+    await topic.create();
+  }
+
+  const subscriptionTest = topic.subscription(subscriptionName);
+  const [subExists] = await subscriptionTest.exists();
+  
+  if (!subExists) {
+    console.log(`⚠️ Suscripción no encontrada. Creando [${subscriptionName}]...`);
+    await subscriptionTest.create();
+  }
+
+  // ==========================================
+  // CONEXIÓN A LA SUSCRIPCIÓN
+  // ==========================================
+  const subscription = pubsub.subscription(subscriptionName, {
     flowControl: { maxMessages: 1 }
   });
 
   console.log("📡 [LISTENER] Analysis Worker V6.0 (Integrated Transactional Engine) | Cabrero listo.");
 
   subscription.on('message', async (message) => {
-    const { aliexpress_id, batchId, targetCountry } = JSON.parse(message.data.toString());
+    console.log("📡 [LISTENER] Analysis Worker V6.0 (message) | Cabrero listo.", message.id);
+
+    // ==========================================
+    // 2. VALIDACIÓN DEL MENSAJE (EL "ESCUDO")
+    // ==========================================
+    let payload;
+    try {
+      payload = JSON.parse(message.data.toString());
+    } catch (error) {
+      console.log(`🗑️ [ERROR] Mensaje no es JSON válido. Descartando...`);
+      message.ack();
+      return;
+    }
+      console.log(` [] payload:`, payload);
+
+    if (!payload.aliexpress_id || !payload.batchId) {
+      runDiscoveryTask(payload.batchId, payload.niche, payload.targetCountry, payload.eliteLimit);
+      message.ack();
+      return;
+    }
+
+    // Extracción segura después de pasar el escudo
+    const { aliexpress_id, batchId, targetCountry } = payload;
     const targetLang = targetCountry === 'CL' ? 'Español' : 'Inglés';
     const config = MARKET_CONFIG[targetCountry as keyof typeof MARKET_CONFIG] || MARKET_CONFIG.CL;
 
@@ -36,8 +86,15 @@ export async function listenForCandidates() {
     try {
       console.log(`\n🔍 [ANALISIS PROFUNDO] ID: ${aliexpress_id} | Batch: ${batchId}`);
 
-      // 1. Obtención de Data Profunda
-      await sleep(5000); 
+   // 1. Obtención de Data Profunda (⚡ JITTER MASIVO ANTI-BAN GEMINI)
+      // Jitter entre 10 segundos y 2 MINUTOS para esparcir los 10 productos a lo largo del tiempo
+      const minJitter = 10000;
+      const maxJitter = 120000; 
+      const jitterDelay = Math.floor(Math.random() * (maxJitter - minJitter + 1)) + minJitter;
+      
+      console.log(`⏳ [ANTI-BAN] Esperando ${Math.round(jitterDelay/1000)}s antes de procesar ID ${aliexpress_id}...`);
+      await sleep(jitterDelay);
+      
       const detail = await aliService.getItemDetail(aliexpress_id);
       
       if (!detail || detail.stock < 5) {
@@ -80,11 +137,34 @@ export async function listenForCandidates() {
         });
       }
 
-      // 5. CFO Engine
-      const analysis = await competitorService.runFullAnalysis(
-        detail.title, targetCountry, parseFloat(vat_rate), 
-        parseFloat(rate_to_usd), landedCostUsd, marketResults, localizedTitle 
-      );
+      // 5. CFO Engine (Con Retry y Exponential Backoff Anti-429)
+      let analysis: any = null;
+      let retries = 0;
+      const maxRetries = 3;
+
+      while (retries < maxRetries) {
+        try {
+          analysis = await competitorService.runFullAnalysis(
+            detail.title, targetCountry, parseFloat(vat_rate), 
+            parseFloat(rate_to_usd), landedCostUsd, marketResults, localizedTitle 
+          );
+          break; // Si tiene éxito, rompemos el ciclo
+        } catch (aiError: any) {
+          if (aiError.message && aiError.message.includes('429')) {
+            retries++;
+            console.log(`⚠️ [GEMINI 429] Cuota excedida. Reintento ${retries}/${maxRetries} en ${retries * 15} segundos...`);
+            await sleep(retries * 15000); // Espera 15s, luego 30s, luego 45s...
+          } else {
+            throw aiError; // Si es un error distinto a 429, lo lanzamos para abortar
+          }
+        }
+      }
+
+      if (!analysis) {
+         console.log(` ❌ [ABORTADO] Gemini no respondió tras ${maxRetries} intentos.`);
+         message.ack();
+         return;
+      }
 
       if (!analysis.isWinner) {
         console.log(` ⏩ [RECHAZADO] ROI: ${analysis.analysis?.estimatedRoi}% | ${analysis.analysis?.reasoning}`);
@@ -140,8 +220,8 @@ export async function listenForCandidates() {
           dbSupplierId = newSupp.rows[0].id;
         }
       }
-      // --- PROCESAMIENTO DE ATRIBUTOS TÉCNICOS ---
-      // Aquí podríamos mapear detail.properties a una tabla de atributos técnicos si es necesario.// --- 7.3 PROCESAMIENTO DE ATRIBUTOS TÉCNICOS ---
+
+      // --- 7.3 PROCESAMIENTO DE ATRIBUTOS TÉCNICOS ---
       const rawProperties = detail.properties || [];
 
       if (rawProperties.length > 0) {
@@ -199,7 +279,6 @@ export async function listenForCandidates() {
         });
 
         // Upsert de Combinaciones Reales
-        // Upsert de Combinaciones Reales
         for (const variantBase of skuData.base) {
           // ⚡ FIX: Guardián contra el crash de 'split' en productos sin variantes
           const propPathRaw = variantBase.propMap || variantBase.propPath || "";
@@ -239,7 +318,7 @@ export async function listenForCandidates() {
           `, [
             internalProductId, 
             variantBase.skuId, 
-            colorName, // Quedará NULL si no hay variantes, lo cual es correcto
+            colorName, 
             sizeName, 
             variantBase.quantity || 0, 
             variantPriceUsd, 

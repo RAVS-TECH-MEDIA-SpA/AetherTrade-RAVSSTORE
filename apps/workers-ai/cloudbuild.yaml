@@ -1,0 +1,10 @@
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args: [
+      'build', 
+      '-t', 'gcr.io/ravstore-scraper-prod/ravstore-worker:v7.4.3', 
+      '-f', 'apps/workers-ai/Dockerfile',    # <-- RUTA DESDE LA RAÍZ
+      '.'
+    ]
+images:
+  - 'gcr.io/ravstore-scraper-prod/ravstore-worker:v7.4.3'

@@ -1,4 +1,4 @@
 export const environment = {
   production: true,
-  apiUrl: 'https://api.aether-trade.com/api' // Tu dominio real de producción
+  apiUrl: 'http://localhost:8080/api' // Tu dominio real de producción
 };
