@@ -1,0 +1,66 @@
+# ==============================================================================
+# .gitignore - RAVSTORE MONOREPO (Next.js + AI Workers)
+# ==============================================================================
+
+# 1. DEPENDENCIAS (El peso pesado)
+node_modules/
+.pnpm-store/
+jspm_packages/
+
+# 2. CONSTRUCCIÓN Y CACHÉ (Lo que se genera solo)
+.next/
+dist/
+build/
+out/
+.turbo/
+.cache/
+.tsbuildinfo
+
+# 3. SCRIPTS Y TEMPORALES DE WORKERS (Específicos para apps/workers-ai)
+# Si tus scripts generan archivos .js desde .ts en la raíz de src, o logs pesados:
+apps/workers-ai/*.js
+apps/workers-ai/temp/
+apps/workers-ai/output/
+scripts/generated/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# 4. SECRETOS Y CONFIGURACIONES (¡CRÍTICO!)
+# Nunca, bajo ninguna circunstancia, se suben estos
+.env
+.env.local
+.env.production
+.env.development
+.env.*.local
+*.pem
+*.key
+
+# 5. INFRAESTRUCTURA Y BASE DE DATOS LOCAL
+# Ignoramos la data del volumen de Docker para que no subas gigas de Postgres
+infrastructure/db/data/
+docker/volumes/
+
+# 6. ARCHIVOS DE SISTEMA Y EDITORES
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# IDEs (Opcional, pero recomendado para Senior)
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# 7. TESTING
+coverage/
+.nyc_output/
+
+# 8. CREDENCIALES GCP
+# Ignoramos las credenciales de Google Cloud para que no se suban al repositorio
+secrets/
+key.json

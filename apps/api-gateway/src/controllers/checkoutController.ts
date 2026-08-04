@@ -1,18 +1,21 @@
 import { Request, Response } from 'express';
-import { createPreference } from '../services/checkoutService.js';
+import { CheckoutService } from '../services/checkoutService.js';
+
+const checkoutService = new CheckoutService();
 
 export const handleCheckout = async (req: Request, res: Response) => {
   try {
-    const { items, orderId } = req.body;
+    const orderData = req.body;
+
+    if (!orderData.items || orderData.items.length === 0) {
+      return res.status(400).json({ error: 'El carrito está vacío' });
+    }
+
+    const result = await checkoutService.createPreference(orderData);
     
-    // 1. Aquí podrías guardar el pedido en tu DB con status "PENDIENTE"
-    
-    // 2. Generamos la URL de Mercado Pago
-    const initPoint = await createPreference(items, orderId);
-    
-    res.json({ initPoint });
-  } catch (error) {
-    console.error("Error en checkout:", error);
-    res.status(500).json({ error: "No se pudo generar el pago" });
+    res.status(200).json(result);
+  } catch (error: any) {
+    console.error('❌ Error en Controlador de Checkout:', error.message);
+    res.status(500).json({ error: 'Error interno al procesar el pago' });
   }
 };

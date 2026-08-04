@@ -106,19 +106,20 @@ services:
       redis:
         condition: service_healthy
       gcs-emulator:
-        condition: service_started # ⚡ También blindamos el Gateway por si descarga imágenes
+        condition: service_started
     environment:
       - DATABASE_URL=postgres://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@db:5432/${DB_NAME:-aethertrade}
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      # --- CORRECCIÓN DE RUTA DE CREDENCIALES ---
       - GOOGLE_APPLICATION_CREDENTIALS=/secrets/aether-gcp-credentials.json
       - GOOGLE_CLOUD_PROJECT=aethertrade-core
       - PUBSUB_EMULATOR_HOST=pubsub:8085
       - PUBSUB_PROJECT_ID=aethertrade-local
       - RAPID_API_KEY=${RAPID_API_KEY}
-      # ⚡ VARIABLE MAGICA: Redirige las llamadas de GCS al emulador local
       - STORAGE_EMULATOR_HOST=http://gcs-emulator:4443
+      # ⚡ AQUI ESTÁ LA MAGIA DE MERCADO PAGO:
+      - MP_ACCESS_TOKEN=${MP_ACCESS_TOKEN}
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
     volumes:
       - ./secrets:/secrets:ro
     networks:

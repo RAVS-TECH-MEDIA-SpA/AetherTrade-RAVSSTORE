@@ -70,12 +70,21 @@ export async function listenForCandidates() {
     }
       console.log(` [] payload:`, payload);
 
+// =========================================================
+    // ⚡ FIX CONCURRENCIA: EL CANDADO SECUENCIAL
+    // =========================================================
     if (!payload.aliexpress_id || !payload.batchId) {
-      runDiscoveryTask(payload.batchId, payload.niche, payload.targetCountry, payload.eliteLimit);
+      console.log(`🚜 [DISCOVERY SECUENCIAL] Iniciando búsqueda para: ${payload.niche}`);
+      try {
+        // AGREGAMOS AWAIT AQUÍ. Esto impide que PubSub procese el siguiente nicho
+        // hasta que este haya terminado de consultar a RapidAPI por completo.
+        await runDiscoveryTask(payload.batchId, payload.niche, payload.targetCountry, payload.eliteLimit);
+      } catch (err) {
+        console.error(`❌ Error en Discovery para ${payload.niche}:`, err);
+      }
       message.ack();
       return;
     }
-
     // Extracción segura después de pasar el escudo
     const { aliexpress_id, batchId, targetCountry } = payload;
     const targetLang = targetCountry === 'CL' ? 'Español' : 'Inglés';
@@ -189,33 +198,58 @@ export async function listenForCandidates() {
       // ==========================================================
       await client.query('BEGIN');
 
-      // --- 7.1 CATEGORÍA ---
+      // --- 7.1 CATEGORÍA (Modificado para inferir desde Gemini y solucionado TS) ---
       let dbCategoryId = null; 
-      const rawCatId = detail.category_id;
-      if (rawCatId !== 'UNCATEGORIZED') {
-        const catRes = await client.query('SELECT id FROM categories WHERE ali_category_id = $1', [rawCatId]);
+      const rawCatId = detail.category_id || (detail as any).catId; 
+      
+      if (rawCatId && rawCatId !== 'UNCATEGORIZED') {
+        const catRes = await client.query('SELECT id FROM categories WHERE ali_category_id = $1', [String(rawCatId)]);
+        
         if (catRes.rows.length > 0) {
           dbCategoryId = catRes.rows[0].id;
         } else {
+          // Ya que RapidAPI no envía el nombre de la categoría, usamos a Gemini para inferirlo del título
+          let finalCategoryName = 'Accesorios y Gadgets';
+          try {
+            const promptCat = `Clasifica el producto "${localizedTitle}" en una categoría general para tienda online. Máximo 3 palabras, en Español. Ejemplos: "Electrónica", "Deportes y Ciclismo", "Hogar", "Salud y Belleza". Responde SOLO con el nombre de la categoría, sin comillas.`;
+           const inferredCat = await gemini.askGenericPrompt(promptCat);
+            if (inferredCat && inferredCat.length > 0 && inferredCat.length < 50) {
+              finalCategoryName = inferredCat.replace(/['"]/g, '').trim();
+            }
+          } catch (e) {
+            console.warn('⚠️ No se pudo inferir la categoría con Gemini, usando fallback.');
+          }
+
+          // Generamos el slug SEO
+          const categorySlug = finalCategoryName
+            .toLowerCase()
+            .normalize("NFD") 
+            .replace(/[\u0300-\u036f]/g, "") 
+            .replace(/[^a-z0-9]+/g, '-') 
+            .replace(/(^-|-$)+/g, ''); 
+
           const newCat = await client.query(
             'INSERT INTO categories (ali_category_id, name, slug) VALUES ($1, $2, $3) RETURNING id', 
-            [rawCatId, 'Categoría Nueva', `cat-${rawCatId}`]
+            [String(rawCatId), finalCategoryName, categorySlug]
           );
           dbCategoryId = newCat.rows[0].id;
+          console.log(`📁 Nueva categoría inferida y creada en BD: ${finalCategoryName} (Slug: ${categorySlug})`);
         }
       }
 
-      // --- 7.2 PROVEEDOR ---
+      // --- 7.2 PROVEEDOR (Ajustado para llaves reales de RapidAPI y solucionado TS) ---
       let dbSupplierId = null;
-      const rawSuppId = detail.supplier_id;
-      if (rawSuppId !== 'UNKNOWN_STORE') {
-        const suppRes = await client.query('SELECT id FROM suppliers WHERE aliexpress_store_id = $1', [rawSuppId]);
+      const rawSuppId = detail.supplier_id || (detail as any).seller?.storeId;
+      const storeName = detail.store_name || (detail as any).seller?.storeTitle || 'Unknown Store';
+      
+      if (rawSuppId && rawSuppId !== 'UNKNOWN_STORE') {
+        const suppRes = await client.query('SELECT id FROM suppliers WHERE aliexpress_store_id = $1', [String(rawSuppId)]);
         if (suppRes.rows.length > 0) {
           dbSupplierId = suppRes.rows[0].id;
         } else {
           const newSupp = await client.query(
             'INSERT INTO suppliers (aliexpress_store_id, store_name) VALUES ($1, $2) RETURNING id', 
-            [rawSuppId, detail.store_name]
+            [String(rawSuppId), storeName]
           );
           dbSupplierId = newSupp.rows[0].id;
         }
@@ -228,7 +262,7 @@ export async function listenForCandidates() {
           detail.properties = await gemini.translateAttributes(rawProperties, targetLang);
         }
 
-      // --- 7.3 PRODUCTO ---
+      // --- 7.4 PRODUCTO ---
       const insertQuery = `
         INSERT INTO products (
           batch_id, aliexpress_id, title_original, category_id, supplier_id,

@@ -1,58 +1,128 @@
 import { MercadoPagoConfig, Preference } from 'mercadopago';
+import { pool } from '../database.js'; // ⚡ Importamos tu conexión a BD
+import { randomUUID } from 'crypto';
 
-import path from 'path';
-import dotenv from 'dotenv';
-import { fileURLToPath } from 'url'; // 👈 Añade esto
+const client = new MercadoPagoConfig({ accessToken: process.env.MP_ACCESS_TOKEN || '' });
 
-// 1. Recrear __dirname para ES Modules
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+export class CheckoutService {
 
-// 2. Configuración del path al .env global
-// src (0) -> api-gateway (1) -> apps (2) -> AETHER-TRADE (3)
-const envPath = path.resolve(__dirname, '../../../.env');
+  async createPreference(orderData: any) {
+    const dbClient = await pool.connect();
+    
+    try {
+      await dbClient.query('BEGIN'); // Iniciamos transacción
 
-// 3. Carga de variables
-dotenv.config({ path: envPath });
+      const generatedOrderId = randomUUID(); 
+      const totalAmount = orderData.items.reduce((sum: number, item: any) => sum + (Number(item.price) * Number(item.quantity)), 0);
 
-const client = new MercadoPagoConfig({ 
-  accessToken: process.env.MP_ACCESS_TOKEN || '' 
-});
+      // ⚡ LECTURA DE URL PARA EL RETORNO AL FRONTEND (PUERTO 3000)
+      const rawUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+      const frontendUrl = rawUrl.endsWith('/') ? rawUrl.slice(0, -1) : rawUrl;
 
-export const createPreference = async (items: any[], orderId: string) => {
-  const preference = new Preference(client);
+      // 1. Crear Preferencia en Mercado Pago
+      const preference = new Preference(client);
+      const mpItems = orderData.items.map((item: any) => ({
+        id: String(item.product_id || item.id), // ⚡ Corregido: lee product_id del frontend
+        title: String(item.title),
+        unit_price: parseInt(String(item.price), 10), // ⚡ FORZAMOS a que sea un número entero estricto
+        quantity: parseInt(String(item.quantity), 10), // ⚡ Forzamos cantidad también por seguridad
+        currency_id: 'CLP'
+      }));
 
-  // Aseguramos que los datos sean primitivos limpios
-  const itemsMP = items.map(item => ({
-    id: String(item.id),
-    title: String(item.title).slice(0, 250),
-    quantity: Number(item.quantity),
-    unit_price: Math.round(Number(item.price)),
-    currency_id: 'CLP'
-  }));
+      const mpResponse = await preference.create({
+        body: {
+          items: mpItems,
+          payer: {
+            email: orderData.customer.email,
+            name: orderData.customer.firstName,
+            surname: orderData.customer.lastName,
+          },
+          external_reference: generatedOrderId,
+          // ⚡ AÑADIMOS LAS URLS PARA QUE EL CLIENTE VUELVA A TU TIENDA TRAS PAGAR
+        // En la creación de tu preferencia en el backend
+        // ⚡ AÑADIMOS LAS URLS PARA QUE EL CLIENTE VUELVA A TU TIENDA TRAS PAGAR
+          back_urls: {
+            success: `${frontendUrl}/checkout/success`, 
+            failure: `${frontendUrl}/checkout`,
+            pending: `${frontendUrl}/checkout`
+          },
+          auto_return: "approved",
+        }
+      });
 
-  try {
-    const response = await preference.create({
-      body: {
-        items: itemsMP,
-        metadata: {
-          order_id: orderId
-        },
-        back_urls: {
-          success: 'http://localhost:3000/checkout/success',
-          failure: 'http://localhost:3000/checkout/failure',
-          pending: 'http://localhost:3000/checkout/pending'
-        },
-        auto_return: "approved"
+      // 2. Gestionar el Cliente (Upsert en tabla 'customers')
+      // Si el email no existe, lo crea. Si existe, actualiza su nombre.
+      const upsertCustomerQuery = `
+        INSERT INTO customers (email, first_name, last_name, phone, is_guest)
+        VALUES ($1, $2, $3, $4, true)
+        ON CONFLICT (email) DO UPDATE 
+        SET first_name = EXCLUDED.first_name, 
+            last_name = EXCLUDED.last_name,
+            phone = EXCLUDED.phone
+        RETURNING id;
+      `;
+      const customerResult = await dbClient.query(upsertCustomerQuery, [
+        orderData.customer.email,
+        orderData.customer.firstName,
+        orderData.customer.lastName,
+        orderData.customer.phone || null
+      ]);
+      const customerId = customerResult.rows[0].id;
+
+      // 3. Crear la Orden (Vinculada al Cliente y a Mercado Pago)
+      const insertOrderQuery = `
+        INSERT INTO orders (id, customer_id, mp_preference_id, status, total_amount_local, total_amount_usd)
+        VALUES ($1, $2, $3, 'PENDING_PAYMENT', $4, $4)
+      `;
+      await dbClient.query(insertOrderQuery, [
+        generatedOrderId, 
+        customerId,
+        mpResponse.id, 
+        totalAmount
+      ]);
+
+     // 4. Guardar los Items de la Orden
+      for (const item of orderData.items) {
+        let realProductId = String(item.productId || item.id);
+
+        // ⚡ DETECTOR DE UUID: Si no tiene formato de UUID, asumimos que es el ID de AliExpress
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+        
+        if (!uuidRegex.test(realProductId)) {
+          // Buscamos el UUID real en tu tabla products usando el aliexpress_id
+          const productSearch = await dbClient.query(
+            'SELECT id FROM products WHERE aliexpress_id = $1 LIMIT 1',
+            [realProductId]
+          );
+          
+          if (productSearch.rows.length > 0) {
+            realProductId = productSearch.rows[0].id; // Reemplazamos por el UUID correcto
+          } else {
+            throw new Error(`El producto con ID AliExpress ${realProductId} no existe en tu tabla 'products'.`);
+          }
+        }
+
+        // Ahora insertamos con toda seguridad
+        await dbClient.query(`
+          INSERT INTO order_items (order_id, product_id, quantity, unit_price_local, unit_cost_usd)
+          VALUES ($1, $2, $3, $4, $4)
+        `, [
+          generatedOrderId,
+          realProductId, // 👈 Aquí pasamos el UUID real aceptado por Postgres
+          item.quantity,
+          item.price // unit_price_local
+        ]);
       }
-    });
 
-    console.log("✅ Preferencia creada con ID:", response.id);
-    return response.id;
-  } catch (error: any) {
-    // Esto imprimirá en tu consola de VS Code el error REAL si MP rechaza algo
-    console.error("❌ Error Mercado Pago Detalle:", error.message);
-    if (error.cause) console.error("Causa:", JSON.stringify(error.cause, null, 2));
-    throw error;
+      await dbClient.query('COMMIT'); 
+      return { preferenceId: mpResponse.id };
+
+    } catch (error: any) {
+      await dbClient.query('ROLLBACK'); 
+      console.error('❌ Error en CheckoutService:', error);
+      throw new Error('Fallo al crear la preferencia');
+    } finally {
+      dbClient.release(); 
+    }
   }
-};
+}

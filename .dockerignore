@@ -1,4 +1,10 @@
 node_modules
-dist
+npm-debug.log
+Dockerfile
 .git
-*.tsbuildinfo
+.gitignore
+.env
+dist
+build
+postgres_data
+redis_data

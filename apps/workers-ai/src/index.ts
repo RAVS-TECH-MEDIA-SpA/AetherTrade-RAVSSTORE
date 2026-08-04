@@ -6,6 +6,9 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { listenForCandidates } from './workers/analysis.worker.js'; 
 import { runDiscoveryTask } from './workers/discovery.worker.js'; 
+// ⚡ NUEVO: Importamos el Worker CAPI y el Cron de Stock de AutoDS
+import { listenForMetaCapiEvents } from './workers/metaCapi.worker.js';
+import './workers/stock-sync.worker.js';
 
 // 1. Manejo de Entorno Inteligente
 if (process.env.NODE_ENV !== 'production') {
@@ -35,10 +38,15 @@ const port = process.env.PORT || 8081;
  */
 const startWorkers = async () => {
   try {
+    // Levantamos el Worker de Análisis de Productos
     await listenForCandidates();
     console.log('📡 AnalysisWorker: Suscripción activa.');
+
+    // ⚡ NUEVO: Levantamos el Worker de Meta CAPI
+    await listenForMetaCapiEvents();
+    console.log('📡 MetaCapiWorker: Suscripción activa.');
   } catch (err) {
-    console.error('❌ Error iniciando AnalysisWorker:', err);
+    console.error('❌ Error iniciando los workers:', err);
   }
 };
 

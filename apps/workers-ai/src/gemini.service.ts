@@ -20,12 +20,13 @@ interface Competitor {
 }
 
 export class GeminiService {
-  // Inicialización mediante Vertex AI (Usa automáticamente GOOGLE_APPLICATION_CREDENTIALS)
+  // Inicialización mediante Vertex AI (Utiliza GOOGLE_APPLICATION_CREDENTIALS)
   private vertexAI = new VertexAI({
     project: process.env.GOOGLE_CLOUD_PROJECT || 'aethertrade-core',
-    location: 'us-central1' // Región por defecto recomendada para Vertex AI
+    location: 'us-central1'
   });
 
+  // Modelo instanciado para respuestas en JSON estructurado
   private model = this.vertexAI.getGenerativeModel({ 
     model: "gemini-2.5-flash", 
     generationConfig: { 
@@ -33,6 +34,26 @@ export class GeminiService {
       temperature: 0.8, 
     } 
   });
+
+  // ⚡ MOTOR INTERNO DE REINTENTOS PARA VERTEX AI (EVITA CAÍDAS POR LÍMITE DE CUOTA 429)
+  private async generateContentWithRetry(prompt: string, maxRetries = 3): Promise<any> {
+    let retries = 0;
+    while (retries < maxRetries) {
+      try {
+        return await this.model.generateContent(prompt);
+      } catch (error: any) {
+        if (error.message && error.message.includes('429')) {
+          retries++;
+          const backoffTime = retries * 15000; // 15s, 30s, 45s
+          console.warn(`⚠️ [VERTEX 429] Cuota de IA excedida. Reintento interno ${retries}/${maxRetries} en ${backoffTime / 1000}s...`);
+          await new Promise(res => setTimeout(res, backoffTime));
+        } else {
+          throw error; // Si el error es distinto (ej. 500, credenciales), falla de inmediato
+        }
+      }
+    }
+    throw new Error(`[VertexAI] Falló después de ${maxRetries} reintentos por límite de cuota (429).`);
+  }
 
   /**
    * Traduce una lista de atributos técnicos al idioma destino en un solo bloque.
@@ -42,12 +63,19 @@ export class GeminiService {
     Devuelve SOLO un array JSON: [{"name": "traducido", "value": "traducido"}].
     Lista: ${JSON.stringify(attributes)}`;
     
-    const result = await this.model.generateContent(prompt);
-    // Extraemos el texto de la respuesta (la API es compatible con la versión anterior)
-    const textResult = result.response.candidates?.[0]?.content?.parts?.[0]?.text || '[]';
-    return JSON.parse(textResult.replace(/```json|```/g, ""));
+    try {
+      const result = await this.generateContentWithRetry(prompt);
+      const textResult = result.response.candidates?.[0]?.content?.parts?.[0]?.text || '[]';
+      return JSON.parse(textResult.replace(/```json|```/g, ""));
+    } catch (error) {
+      console.error("❌ Error en translateAttributes:", error);
+      return attributes; // Fallback: si todo falla, devolvemos los originales para no crashear
+    }
   }
 
+  /**
+   * Refactoriza títulos de productos para SEO de e-commerce.
+   */
   async translateForSearch(title: string, targetLang: string): Promise<string> {
     const prompt = `
         TAREA: Refactorizar títulos de productos para SEO de e-commerce.
@@ -65,14 +93,18 @@ export class GeminiService {
       `;
     
     try {
-      const result = await this.model.generateContent(prompt);
+      const result = await this.generateContentWithRetry(prompt);
       const textResult = result.response.candidates?.[0]?.content?.parts?.[0]?.text || '';
       return textResult.trim();
     } catch (error) {
+      console.warn("⚠️ Falló translateForSearch. Usando fallback de título.");
       return title.split(' ').slice(0, 3).join(' ');
     }
   }
 
+  /**
+   * Motor de Análisis Financiero (CFO) y Copywriting Integrado para Meta Ads
+   */
   async analyzeArbitrage(
     aliData: any, 
     competitors: Competitor[], 
@@ -88,13 +120,13 @@ export class GeminiService {
     // CARGA DE CONFIGURACIÓN DINÁMICA POR PAÍS
     const config = MARKET_CONFIG[targetCountry as keyof typeof MARKET_CONFIG] || MARKET_CONFIG.CL;
     
-    // Extraemos la info para inyectar en el prompt (Limitado para no explotar tokens)
+    // Extraemos la información técnica sin saturar el contexto de tokens
     const technicalSpecs = JSON.stringify(aliData.properties?.slice(0, 15) || []);
     const manufacturerDescription = aliData.extended_text ? aliData.extended_text.substring(0, 1500) : 'Sin descripción adicional.';
 
     const prompt = `
       Actúa como un CFO y Copywriter de tecnología High-End experto en E-commerce. 
-      Tu misión es evaluar la viabilidad financiera y crear el material de venta premium para el producto: "${aliData.title}".
+      Tu misión es evaluar la viabilidad financiera, crear el material de venta premium y definir la segmentación para Meta Ads del producto: "${aliData.title}".
 
       ### 1. DATA ECONÓMICA (INPUT):
       - Costo de Adquisición Total: ${landedCostUsd.toFixed(2)} USD.
@@ -103,27 +135,28 @@ export class GeminiService {
       - Impuestos Aplicables (IVA/VAT): ${taxRate}%.
       - Comisión de Pasarela de Pagos (Estimada): 5%.
 
-      ### 2. DATA TÉCNICA DEL PRODUCTO (Para tu Copywriting):
+      ### 2. DATA TÉCNICA DEL PRODUCTO:
       - Especificaciones: ${technicalSpecs}
       - Descripción del Fabricante: ${manufacturerDescription}
 
-      ### 3. PROTOCOLO DE PRICING ESTRATÉGICO:
-      - ESCENARIO COMPETITIVO: Si existe competencia real (${!hasSynthetic}), el 'suggestedPriceLocal' debe posicionarse un 4% por debajo del precio mínimo de la competencia para capturar volumen de mercado rápidamente.
-      - ESCENARIO DE EXCLUSIVIDAD: Si el competidor es "Aether-Market-Engine" (Sintético: ${hasSynthetic}), estás ante un 'Océano Azul'. Optimiza el precio para obtener un ROI de entre el 100% y el 250% según la utilidad percibida.
+      ### 3. PROTOCOLO DE PRICING ESTRATÉGICO Y CPA:
+      - ESCENARIO COMPETITIVO: Si existe competencia real (${!hasSynthetic}), el 'suggestedPriceLocal' debe posicionarse un 4% por debajo del precio mínimo para capturar volumen.
+      - ESCENARIO DE EXCLUSIVIDAD: Si es "Aether-Market-Engine" (${hasSynthetic}), optimiza el precio para obtener un ROI entre 100% y 250%.
+      - CÁLCULO DE CPA MÁXIMO: cpaMaxLocal = Margen Neto (en ${currency}) * 0.60. (El 60% del margen se destina a Meta Ads).
 
-      ### 4. LÓGICA DE DECISIÓN (WINNER):
-      - MARCAR "isWinner" COMO TRUE SOLO SI:
-        - El ROI Final es > 15% tras descontar impuestos y comisiones (Calcula convirtiendo el Costo USD a ${currency} usando el tipo de cambio ${rateToUsd}).
-        - El Margen Neto es > $${config.SAFETY_MARGIN.toFixed(2)} USD.
+      ### 4. LÓGICA DE DECISIÓN (WINNER & ADS):
+      - "isWinner" = true SOLO SI el ROI Final es > 15% y Margen Neto > $${config.SAFETY_MARGIN.toFixed(2)} USD.
+      - "isViableForAds" = true SOLO SI el cpaMaxLocal calculado es >= 4000 ${currency}.
 
-      ### 5. REGLAS DE COPYWRITING PROFESIONAL (AIDA):
-      - TÍTULO: Máximo 60 caracteres, en idioma ${targetCountry === 'CL' ? 'Español' : 'Inglés'}, enfocado en el beneficio principal y SEO.
-      - HOOK: Una frase disruptiva que detenga el scroll.
-      - BENEFICIOS: Lista de 3 a 4 puntos clave, extraídos estrictamente de la Data Técnica del Producto. Transforma características en beneficios de alto valor.
-      - DESCRIPCIÓN: Un párrafo de 4 a 5 líneas, EXTREMADAMENTE DETALLADO y persuasivo, basado en la descripción del fabricante proporcionada. Usa lenguaje técnico, formal pero enfocado en el beneficio. Cero textos genéricos.
+      ### 5. REGLAS DE COPYWRITING Y SEGMENTACIÓN META ADS:
+      - TÍTULO: Máximo 60 caracteres en ${targetCountry === 'CL' ? 'Español' : 'Inglés'}.
+      - HOOK: Frase disruptiva que detenga el scroll.
+      - BENEFICIOS: Lista de 3 a 4 puntos clave, extraídos de la data técnica.
+      - DESCRIPCIÓN: Párrafo persuasivo, técnico y formal.
+      - META TARGETING: Define un 'buyer_persona' claro, lista 3 a 5 'interests' exactos que existan en Facebook Ads, y define el 'marketing_angle' (ej. Ahorro de tiempo, Estatus, Solución a un problema).
 
       ### 6. PROTOCOLO DE SALIDA (JSON ESTRICTO):
-      - Debes responder ÚNICAMENTE con un objeto JSON válido. No incluyas introducciones ni conclusiones.
+      - Responde ÚNICAMENTE con un objeto JSON válido.
       
       Estructura requerida:
       {
@@ -132,29 +165,37 @@ export class GeminiService {
           "suggestedPriceLocal": number,
           "estimatedRoi": number,
           "netMarginUsd": number,
-          "reasoning": "Explicación en el idioma del país"
+          "cpaMaxLocal": number,
+          "cpaMaxLocalCurrency": "${currency}",
+          "isViableForAds": boolean,
+          "reasoning": "string"
         },
         "copywriting": {
           "title_localized": "string",
           "hook": "string",
-          "benefits": ["string", "string", "string"],
+          "benefits": ["string", "string"],
           "description_localized": "string"
+        },
+        "meta_targeting": {
+          "buyer_persona": "string",
+          "interests": ["string", "string"],
+          "marketing_angle": "string"
         }
       }
 
       ANÁLISIS ESTRATÉGICO FINALIZADO. RESPONDE SOLO EL JSON:`;
 
     try {
-      const result = await this.model.generateContent(prompt);
+      const result = await this.generateContentWithRetry(prompt);
       const textResult = result.response.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
       const cleanJson = textResult.replace(/```json|```/g, "").trim();
       const parsed = JSON.parse(cleanJson);
       
-      // Adaptación de nombres si Gemini usa description en lugar de description_localized
-      if(parsed.copywriting && parsed.copywriting.description && !parsed.copywriting.description_localized) {
+      if (parsed.copywriting && parsed.copywriting.description && !parsed.copywriting.description_localized) {
         parsed.copywriting.description_localized = parsed.copywriting.description;
       }
 
+      // Asegurar que el bloque meta_targeting se integre dentro de marketing_copy en la BD
       return {
         ...parsed,
         landedCostUsd
@@ -162,15 +203,25 @@ export class GeminiService {
     } catch (error: any) {
       console.error("❌ Error parseando Gemini Arbitrage:", error.message || error);
       
-      // ⚡ ESTA ES LA LÍNEA MÁGICA QUE FALTABA
-      // Si el error dice 429 (Resource exhausted), lo disparamos hacia arriba 
-      // para que el Worker (analysis.worker.ts) haga la pausa de 15s y reintente.
-      if (error.message && error.message.includes('429')) {
-        throw error; 
-      }
+      // Fallback actualizado con la nueva estructura
+      return { 
+        isWinner: false, 
+        analysis: { suggestedPriceLocal: 0, estimatedRoi: 0, netMarginUsd: 0, cpaMaxLocal: 0, isViableForAds: false }, 
+        copywriting: {},
+        meta_targeting: {} 
+      };
+    }
+  }
 
-      // Si es un error normal de formateo JSON, devolvemos un ganador fallido
-      return { isWinner: false, analysis: { suggestedPriceLocal: 0, estimatedRoi: 0, netMarginUsd: 0 }, copywriting: {} };
+  async askGenericPrompt(prompt: string): Promise<string> {
+    try {
+      const result = await this.generateContentWithRetry(prompt);
+      const textResult = result.response.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      // Limpiamos comillas accidentales y espacios
+      return textResult.replace(/['"]/g, '').trim(); 
+    } catch (error) {
+      console.warn("⚠️ Falló askGenericPrompt. Devolviendo string vacío.");
+      return '';
     }
   }
 }

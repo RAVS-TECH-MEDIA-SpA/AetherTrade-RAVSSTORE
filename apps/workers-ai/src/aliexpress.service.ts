@@ -83,48 +83,73 @@ export class AliExpressService {
     return url.startsWith('//') ? `https:${url}` : url;
   }
 
-  private async wait(min = 1500, max = 3000): Promise<void> {
+  // ⚡ Aumentamos el tiempo base de espera para dar respiro a la API
+  private async wait(min = 2000, max = 4000): Promise<void> {
     const ms = Math.floor(Math.random() * (max - min + 1)) + min;
-    return new Promise(resolve => setTimeout(resolve, Math.max(ms, 1000)));
+    return new Promise(resolve => setTimeout(resolve, Math.max(ms, 2000)));
   }
 
   /**
-   * FASE 1: Búsqueda (Discovery Worker)
+   * FASE 1: Búsqueda (Discovery Worker) - 🛡️ BLINDADA ANTI-429
    */
   async searchTrending(niche: string, country: string, maxPages: number = 1): Promise<AliProductBase[]> {
-    console.log(`⏳ [searchTrending] Consultando RapidAPI: ...`);
+    console.log(`⏳ [searchTrending] Consultando RapidAPI para: ${niche}...`);
 
     if (!this.apiKey) return [];
     let allRawItems: any[] = [];
     
     try {
       for (let p = 1; p <= maxPages; p++) {
-        console.log(`⏳ [searchTrending] Consultando RapidAPI: Page ${p}`);
-        await this.wait();
-        const options = {
-          method: 'GET',
-          url: `https://${this.host}/item_search_3`,
-          params: { 
-            q: niche, 
-            page: String(p), 
-            region: country, 
-            sort: 'salesDesc', 
-            locale: 'en_US', 
-            currency: 'USD' 
-          },
-          headers: { 'x-rapidapi-key': this.apiKey, 'x-rapidapi-host': this.host },
-          timeout: 15000
-        };
+        let retries = 0;
+        const maxRetries = 3;
+        let pageSuccess = false;
 
-        console.log(`⏳ [SEARCH PAGE ${p}] Consultando RapidAPI: "${niche}"...`);
-        console.log(`⏳ [SEARCH PAGE ] Consultando options: "${JSON.stringify(options)}"...`);
+        while (retries < maxRetries && !pageSuccess) {
+          try {
+            await this.wait(2000, 4000); // Pausa segura
+            
+            const options = {
+              method: 'GET',
+              url: `https://${this.host}/item_search_3`,
+              params: { 
+                q: niche, 
+                page: String(p), 
+                region: country, 
+                sort: 'salesDesc', 
+                locale: 'en_US', 
+                currency: 'USD' 
+              },
+              headers: { 'x-rapidapi-key': this.apiKey, 'x-rapidapi-host': this.host },
+              timeout: 15000
+            };
 
-        const response = await axios.request(options);
-        console.log(`⏳ [SEARCH PAGE ] Consultando response recibido`);
-        const pageItems = response.data?.result?.resultList || [];
-        
-        if (pageItems.length === 0) break;
-        allRawItems = [...allRawItems, ...pageItems];
+            console.log(`⏳ [SEARCH PAGE ${p}] Consultando RapidAPI: "${niche}"...`);
+
+            const response = await axios.request(options);
+            const pageItems = response.data?.result?.resultList || [];
+            
+            if (pageItems.length === 0) {
+                pageSuccess = true; 
+                break;
+            }
+
+            allRawItems = [...allRawItems, ...pageItems];
+            pageSuccess = true;
+
+          } catch (error: any) {
+            // ⚡ DETECCIÓN DE BANEO (429 Too Many Requests)
+            if (error.response && error.response.status === 429) {
+              retries++;
+              const backoffTime = retries * 5000; // 5s, 10s, 15s
+              console.warn(`⚠️ [RAPIDAPI 429] Cuota excedida en búsqueda "${niche}". Reintento ${retries}/3 en ${backoffTime/1000}s...`);
+              await new Promise(res => setTimeout(res, backoffTime));
+            } else {
+              console.error(`🚨 ERROR EN SEARCH para "${niche}":`, error.message);
+              break; // Rompemos el while si es un error distinto a 429 (ej. 404, 500)
+            }
+          }
+        }
+
         if (allRawItems.length >= 40) break; 
       }
 
@@ -149,138 +174,150 @@ export class AliExpressService {
         };
       });
     } catch (error: any) {
-      console.error(`🚨 ERROR EN SEARCH para "${niche}":`, error.message);
+      console.error(`🚨 ERROR GENERAL EN SEARCH para "${niche}":`, error.message);
       return []; 
     }
   }
 
   /**
-   * FASE 2: Detalle Profundo (Analysis Worker)
-   */
-  /**
-   * FASE 2: Detalle Profundo (Analysis Worker)
+   * FASE 2: Detalle Profundo (Analysis Worker) - 🛡️ BLINDADA ANTI-429
    */
   async getItemDetail(itemId: string): Promise<AliProductDetail | null> {
     if (!this.apiKey) return null;
-    try {
-      await this.wait();
-      
-      // ⚡ ACTUALIZADO AL ENDPOINT V3
-      const options = {
-        method: 'GET',
-        url: `https://${this.host}/item_detail_6`, 
-        params: { itemId },
-        headers: { 'x-rapidapi-key': this.apiKey, 'x-rapidapi-host': this.host },
-        timeout: 15000
-      };
+    
+    let retries = 0;
+    const maxRetries = 3;
 
-      const response = await axios.request(options);
-      const data = response.data?.result;
-      
-      if (!data || !data.item) {
-        console.warn(`⚠️ [DETAIL] No se encontró info para ID: ${itemId}. Respuesta API:`, JSON.stringify(response.data));
-        return null;
-      }
-
-      let extendedText = "";
-      let extraProperties: { name: string; value: string }[] = [];
-      let extraImages: string[] = [];
-
+    while (retries < maxRetries) {
       try {
-        // ⚡ ACTUALIZADO AL ENDPOINT V2 DE DESCRIPCIÓN
-        const descOptions = {
+        await this.wait(2000, 4000); 
+        
+        // ⚡ ENDPOINT V3
+        const options = {
           method: 'GET',
-          url: `https://${this.host}/item_desc_2`,
+          url: `https://${this.host}/item_detail_6`, 
           params: { itemId },
           headers: { 'x-rapidapi-key': this.apiKey, 'x-rapidapi-host': this.host },
-          timeout: 10000
+          timeout: 15000
         };
-        const descRes = await axios.request(descOptions);
-        const descItem = descRes.data?.result?.item;
 
-        if (descItem) {
-          if (descItem.description?.text) {
-            extendedText = descItem.description.text.join(' \n ').trim();
-          }
-          if (descItem.description?.images) {
-            extraImages = descItem.description.images.map((img: string) => this.fixUrl(img) || '');
-          }
-          if (descItem.properties?.list) {
-            extraProperties = descItem.properties.list.map((p: any) => ({
-              name: p.name,
-              value: p.value
-            }));
-          }
+        const response = await axios.request(options);
+        const data = response.data?.result;
+        
+        if (!data || !data.item) {
+          console.warn(`⚠️ [DETAIL] No se encontró info para ID: ${itemId}. Respuesta API:`, JSON.stringify(response.data));
+          return null;
         }
-      } catch (e) {
-        console.log(`⚠️ [DETAIL] Sin descripción extendida para ID ${itemId}`);
-      }
 
-      // MAPEO FINAL DE LA DATA ESTRUCTURADA
-      return {
-        sku: data.item.sku,
-        aliexpress_id: data.item.itemId,
-        title: data.item.title,
-        price: parseFloat(data.item.sku?.def?.promotionPrice || data.item.sku?.def?.price || '0'),
-        rating: data.item.averageStarRate ? parseFloat(data.item.averageStarRate) : 0,
-        sales: data.item.sales || 0,
-        url: this.fixUrl(data.item.itemUrl) || '',
-        imageUrl: this.fixUrl(data.item.images?.[0]) || '',
-        
-        images: data.item.images 
-          ? [...data.item.images.map((img: string) => this.fixUrl(img)), ...extraImages].filter(Boolean)
-          : extraImages.filter(Boolean),
-          
-        freeShipping: data.delivery?.freeShipping === true,
-        category_id: data.item.catId ? String(data.item.catId) : 'UNCATEGORIZED',
-        store_name: data.seller?.storeTitle || 'AliExpress Store',
-        supplier_id: data.seller?.storeId ? String(data.seller.storeId) : 'UNKNOWN_STORE',
-        available: data.item.available !== false,
-        stock: data.item.sku?.def?.quantity || 0,
-        videoUrl: data.item.videoUrl || null,
-        shippingFee: parseFloat(data.delivery?.shippingFee || '0'),
-        
-        properties: extraProperties.length > 0 
-          ? extraProperties 
-          : (data.item.properties?.map((p: any) => ({ name: p.name, value: p.value })) || []), 
-          
-        variants: data.item.sku?.base || [],
-        extended_text: extendedText,
+        let extendedText = "";
+        let extraProperties: { name: string; value: string }[] = [];
+        let extraImages: string[] = [];
 
-        // 📦 LOGÍSTICA
-        logistics: {
-          weight: data.delivery?.packageDetail?.weight || 0,
-          dimensions: {
-            l: data.delivery?.packageDetail?.length || 0,
-            w: data.delivery?.packageDetail?.width || 0,
-            h: data.delivery?.packageDetail?.height || 0
+        try {
+          // ⚡ ENDPOINT V2 DE DESCRIPCIÓN
+          const descOptions = {
+            method: 'GET',
+            url: `https://${this.host}/item_desc_2`,
+            params: { itemId },
+            headers: { 'x-rapidapi-key': this.apiKey, 'x-rapidapi-host': this.host },
+            timeout: 10000
+          };
+          const descRes = await axios.request(descOptions);
+          const descItem = descRes.data?.result?.item;
+
+          if (descItem) {
+            if (descItem.description?.text) {
+              extendedText = descItem.description.text.join(' \n ').trim();
+            }
+            if (descItem.description?.images) {
+              extraImages = descItem.description.images.map((img: string) => this.fixUrl(img) || '');
+            }
+            if (descItem.properties?.list) {
+              extraProperties = descItem.properties.list.map((p: any) => ({
+                name: p.name,
+                value: p.value
+              }));
+            }
+          }
+        } catch (e) {
+          console.log(`⚠️ [DETAIL] Sin descripción extendida para ID ${itemId}`);
+        }
+
+        // MAPEO FINAL DE LA DATA ESTRUCTURADA
+        return {
+          sku: data.item.sku,
+          aliexpress_id: data.item.itemId,
+          title: data.item.title,
+          price: parseFloat(data.item.sku?.def?.promotionPrice || data.item.sku?.def?.price || '0'),
+          rating: data.item.averageStarRate ? parseFloat(data.item.averageStarRate) : 0,
+          sales: data.item.sales || 0,
+          url: this.fixUrl(data.item.itemUrl) || '',
+          imageUrl: this.fixUrl(data.item.images?.[0]) || '',
+          
+          images: data.item.images 
+            ? [...data.item.images.map((img: string) => this.fixUrl(img)), ...extraImages].filter(Boolean)
+            : extraImages.filter(Boolean),
+            
+          freeShipping: data.delivery?.freeShipping === true,
+          category_id: data.item.catId ? String(data.item.catId) : 'UNCATEGORIZED',
+          store_name: data.seller?.storeTitle || 'AliExpress Store',
+          supplier_id: data.seller?.storeId ? String(data.seller.storeId) : 'UNKNOWN_STORE',
+          available: data.item.available !== false,
+          stock: data.item.sku?.def?.quantity || 0,
+          videoUrl: data.item.videoUrl || null,
+          shippingFee: parseFloat(data.delivery?.shippingFee || '0'),
+          
+          properties: extraProperties.length > 0 
+            ? extraProperties 
+            : (data.item.properties?.map((p: any) => ({ name: p.name, value: p.value })) || []), 
+            
+          variants: data.item.sku?.base || [],
+          extended_text: extendedText,
+
+          // 📦 LOGÍSTICA
+          logistics: {
+            weight: data.delivery?.packageDetail?.weight || 0,
+            dimensions: {
+              l: data.delivery?.packageDetail?.length || 0,
+              w: data.delivery?.packageDetail?.width || 0,
+              h: data.delivery?.packageDetail?.height || 0
+            },
+            shippingType: data.delivery?.shippingList?.[0]?.shippingCompany || 'Standard',
           },
-          shippingType: data.delivery?.shippingList?.[0]?.shippingCompany || 'Standard',
-        },
 
-        // 🚚 ENTREGA
-        delivery: {
-          estimateDate: data.delivery?.shippingList?.[0]?.estimateDeliveryDate || null,
-          isFree: data.delivery?.freeShipping || false,
-          shippingFee: parseFloat(data.delivery?.shippingList?.[0]?.shippingFee || '0')
-        },
+          // 🚚 ENTREGA
+          delivery: {
+            estimateDate: data.delivery?.shippingList?.[0]?.estimateDeliveryDate || null,
+            isFree: data.delivery?.freeShipping || false,
+            shippingFee: parseFloat(data.delivery?.shippingList?.[0]?.shippingFee || '0')
+          },
 
-        // 🛡️ CONFIANZA
-        trust: {
-          storeName: data.seller?.storeTitle || 'AliExpress Store',
-          storeAge: data.seller?.storeAge || 'N/A',
-          isOfficial: data.seller?.storeTitle?.toLowerCase().includes('official'),
-          buyerProtection: true 
-        },
+          // 🛡️ CONFIANZA
+          trust: {
+            storeName: data.seller?.storeTitle || 'AliExpress Store',
+            storeAge: data.seller?.storeAge || 'N/A',
+            isOfficial: data.seller?.storeTitle?.toLowerCase().includes('official'),
+            buyerProtection: true 
+          },
 
-        // 🏷️ CATEGORIZACIÓN
-        categories: data.item.breadcrumbs?.map((b: any) => b.title) || []
-      };
+          // 🏷️ CATEGORIZACIÓN
+          categories: data.item.breadcrumbs?.map((b: any) => b.title) || []
+        };
 
-    } catch (error: any) {
-      console.error(`❌ Error RapidAPI Detail para ID ${itemId}:`, error.message);
-      return null;
+      } catch (error: any) {
+        if (error.response && error.response.status === 429) {
+          retries++;
+          const backoffTime = retries * 5000;
+          console.warn(`⚠️ [RAPIDAPI 429] Detalle ID ${itemId}. Reintento ${retries}/3 en ${backoffTime/1000}s...`);
+          await new Promise(res => setTimeout(res, backoffTime));
+        } else {
+          console.error(`❌ Error RapidAPI Detail para ID ${itemId}:`, error.message);
+          return null; 
+        }
+      }
     }
+    
+    return null; // Si agota los 3 reintentos 429, retorna null para descartar el producto
   }
 
   /**

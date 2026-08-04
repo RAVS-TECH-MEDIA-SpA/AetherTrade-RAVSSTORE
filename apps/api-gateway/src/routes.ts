@@ -8,7 +8,8 @@ import {
 } from './controllers/dashboard.controller.js';
 import { handleCheckout } from './controllers/checkoutController.js';
 import { handleMPWebhook } from './webhooks/webhook.controller.js';
-
+import { createOrder } from './controllers/orders.controller.js'; // <-- NUEVA IMPORTACIÓN
+import { generateFacebookFeed } from './controllers/feed.controller.js';
 
 const router = Router();
 
@@ -33,8 +34,14 @@ router.get('/products/:id', getProductById);
 // Trigger manual para forzar análisis de un nicho vía Pub/Sub
 router.post('/analyze', triggerAnalysis);
 
+// <-- NUEVA RUTA PARA GUARDAR LA ORDEN ANTES DEL PAGO -->
+router.post('/orders', createOrder);
+
 router.post('/checkout', handleCheckout);
 
 router.post('/webhooks/mercadopago', handleMPWebhook);
+
+// Endpoint para el Catálogo de Commerce Manager de Meta
+router.get('/feed/facebook.xml', generateFacebookFeed);
 
 export default router;
