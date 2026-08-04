@@ -29,30 +29,46 @@ export async function POST(
 ) {
   try {
     const { id } = await params;
-    const { quantity } = await request.json();
+    
+    // ⚡ NUEVO: Capturamos la data del comprador desde el frontend
+    const { quantity, customerInfo, shippingAddress } = await request.json();
     const API_URL = process.env.API_GATEWAY_URL;
 
-    if (!quantity || quantity < 1) {
-      return NextResponse.json({ error: 'Cantidad inválida' }, { status: 400 });
+    if (!quantity || quantity < 1 || !shippingAddress) {
+      return NextResponse.json({ error: 'Faltan datos obligatorios para el envío' }, { status: 400 });
     }
 
-    // CONSULTA A API GATEWAY EN LUGAR DE DB DIRECTA
-    const res = await fetch(`${API_URL}/api/products/${id}`);
-    if (!res.ok) {
-      return NextResponse.json({ error: 'Producto no encontrado en Gateway' }, { status: 404 });
+    // 1. Obtener datos del producto
+    const resProduct = await fetch(`${API_URL}/api/products/${id}`);
+    if (!resProduct.ok) {
+      return NextResponse.json({ error: 'Producto no encontrado' }, { status: 404 });
     }
+    const product = await resProduct.json();
 
-    const product = await res.json();
-
-    // Extraer datos localizados
     const productName = product.marketing_copy?.title_localized || product.title_original;
     const unitPrice = parseFloat(product.suggested_price_local);
     const country = product.target_country; 
-
     const currency = country === 'CL' ? 'CLP' : (country === 'MX' ? 'MXN' : 'BRL');
 
-    const preference = new Preference(client);
+    // ⚡ 2. CREAR LA ORDEN PENDIENTE EN EL BACKEND (Para AutoDS)
+    const orderRes = await fetch(`${API_URL}/api/orders`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        product_id: product.id,
+        quantity: Number(quantity),
+        customer_email: customerInfo.email,
+        customer_name: customerInfo.name,
+        shipping_address: shippingAddress, // { street, city, state, zip, phone }
+        status: 'PENDING_PAYMENT'
+      })
+    });
+    
+    if (!orderRes.ok) throw new Error('No se pudo crear la orden pendiente');
+    const draftOrder = await orderRes.json();
 
+    // 3. Crear Preferencia en MercadoPago
+    const preference = new Preference(client);
     const mpResponse = await preference.create({
       body: {
         items: [
@@ -72,7 +88,8 @@ export async function POST(
         auto_return: "approved",
         notification_url: `${process.env.API_WEBHOOK_URL}/webhooks/mercadopago`,
         statement_descriptor: "AETHER TRADE",
-        external_reference: product.id 
+        // ⚡ LA CLAVE: Ahora MercadoPago sabe qué orden estamos pagando
+        external_reference: draftOrder.id 
       }
     });
 

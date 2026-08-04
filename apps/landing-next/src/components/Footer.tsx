@@ -28,7 +28,7 @@ export default function Footer({ countryCode = 'CL' }: FooterProps) {
             
             <div className="space-y-1 text-center md:text-left">
               <p className="text-slate-500 text-[10px] font-black uppercase tracking-[0.3em]">
-                © {currentYear} Ravstore {countryCode} Division
+                © {currentYear} RavsStore {countryCode} Division
               </p>
               <p className="text-slate-600 text-[9px] font-bold uppercase tracking-widest">
                 Tecnología Global • Respaldo Local • Impulsado por IA
@@ -39,17 +39,53 @@ export default function Footer({ countryCode = 'CL' }: FooterProps) {
           {/* LADO DERECHO: PAGOS Y LINKS */}
           <div className="flex flex-col items-center md:items-end gap-10">
             
-            {/* MÉTODOS DE PAGO (Visibles para generar confianza) */}
-            <div className="flex flex-wrap justify-center md:justify-end items-center gap-8 opacity-80 hover:opacity-100 transition-opacity">
-              <img src="https://logodownload.org/wp-content/uploads/2014/07/visa-logo-1.png" className="h-2.5 w-auto" alt="Visa" />
-              <img src="https://logodownload.org/wp-content/uploads/2014/07/mastercard-logo.png" className="h-5 w-auto" alt="Mastercard" />
+            {/* MÉTODOS DE PAGO (Estructura Apilada) */}
+            <div className="flex flex-col items-center md:items-end gap-3 opacity-80 hover:opacity-100 transition-opacity duration-300">
               
-              {/* Mercado Pago */}
-              <img src="https://logodownload.org/wp-content/uploads/2019/06/mercado-pago-logo-0.png" className="h-4 w-auto" alt="Mercado Pago" />
-              
-              {countryCode === 'CL' && (
-                <img src="https://www.transbank.cl/documents/20121/0/WebpayPlus_800px.png" className="h-4 w-auto" alt="Webpay" />
-              )}
+              {/* Fila Superior: Mercado Pago */}
+              <div className="flex items-center justify-center h-8 md:h-10">
+                <img 
+                  src="/assets/medios-pago/logos/MP_RGB_HANDSHAKE_pluma_horizontal.svg" 
+                  className="h-full w-auto object-contain" 
+                  alt="Mercado Pago" 
+                />
+              </div>
+
+              {/* Fila Inferior: Tarjetas y Webpay (Cargando desde la misma ruta local) */}
+              <div className="flex flex-wrap items-center justify-center gap-2.5 md:gap-3">
+                
+                {/* Visa */}
+                <div className="bg-white px-3 py-1.5 rounded flex items-center justify-center h-7 md:h-8 shadow-sm">
+                  <img 
+                    src="/assets/medios-pago/logos/visa.svg" 
+                    className="h-3 md:h-3.5 w-auto object-contain" 
+                    alt="Visa" 
+                    onError={(e) => { e.currentTarget.src = "https://upload.wikimedia.org/wikipedia/commons/5/5e/Visa_Inc._logo.svg"; }}
+                  />
+                </div>
+
+                {/* Mastercard */}
+                <div className="bg-white px-3 py-1.5 rounded flex items-center justify-center h-7 md:h-8 shadow-sm">
+                  <img 
+                    src="/assets/medios-pago/logos/mastercard.svg" 
+                    className="h-4 md:h-5 w-auto object-contain" 
+                    alt="Mastercard" 
+                    onError={(e) => { e.currentTarget.src = "https://upload.wikimedia.org/wikipedia/commons/2/2a/Mastercard-logo.svg"; }}
+                  />
+                </div>
+                
+                {/* Webpay Plus (Solo CL) */}
+                {countryCode === 'CL' && (
+                  <div className="bg-white px-3 py-1.5 rounded flex items-center justify-center h-7 md:h-8 shadow-sm">
+                    <img 
+                      src="/assets/medios-pago/logos/webpay.svg" 
+                      className="h-4 w-auto object-contain" 
+                      alt="Webpay"
+                      onError={(e) => { e.currentTarget.src = "https://www.transbank.cl/documents/20121/0/WebpayPlus_800px.png"; }} 
+                    />
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* LINKS LEGALES */}

@@ -16,13 +16,13 @@ export const Warranty = () => (
           </h2>
           
           <p className="text-slate-400 text-lg max-w-2xl font-medium">
-            Ravstore Chile combina la innovación internacional con la seguridad local. 
+            RavsStore Chile combina la innovación internacional con la seguridad local. 
             Todas tus compras están protegidas por estándares de garantía chilenos y soporte técnico especializado.
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full pt-8 border-t border-white/5">
             <div className="flex items-center gap-3 justify-center text-[10px] font-black text-white uppercase tracking-[0.2em]">
-              <Zap className="text-violet-500 w-4 h-4" /> Pago Seguro Webpay
+              <Zap className="text-violet-500 w-4 h-4" /> Pago Seguro por MercadoPago
             </div>
             <div className="flex items-center gap-3 justify-center text-[10px] font-black text-white uppercase tracking-[0.2em]">
               <ShieldCheck className="text-violet-500 w-4 h-4" /> Garantía en Chile

@@ -1,6 +1,7 @@
-import './globals.css'; // <--- VITAL
+import './globals.css';
 import { Metadata } from 'next';
-import Script from 'next/script'; // <--- Importamos el componente de Script
+import Script from 'next/script';
+import MetaPixelInit from '@/components/MetaPixelInit';
 
 export const metadata: Metadata = {
   title: {
@@ -14,7 +15,7 @@ export const metadata: Metadata = {
   openGraph: {
     type: 'website',
     locale: 'es_CL',
-    url: 'https://ravstore.vercel.app',
+    url: 'https://ravsstore.com',
     siteName: 'Ravstore',
     images: [{
       url: '/og-image.jpg',
@@ -30,10 +31,11 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+  const pixelId = process.env.NEXT_PUBLIC_FB_PIXEL_ID; // <-- USA SOLO ESTE NOMBRE
+
   return (
     <html lang="es" className="scroll-smooth">
       <head>
-        {/* JSON-LD para Google Search */}
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{
@@ -42,7 +44,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               "@type": "OnlineStore",
               "name": "Ravstore",
               "description": "Tienda de arbitraje inteligente y tecnología premium.",
-              "url": "https://ravstore.vercel.app",
+              "url": "https://ravsstore.com",
               "address": {
                 "@type": "PostalAddress",
                 "addressLocality": "Cabrero",
@@ -52,16 +54,36 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             })
           }}
         />
+        
         <Script 
           src="https://sdk.mercadopago.com/js/v2" 
-          strategy="beforeInteractive" 
+          strategy="afterInteractive" 
         />
+
+        {/* Meta Pixel - UNA SOLA VEZ */}
+        {pixelId && (
+          <Script id="fb-pixel" strategy="afterInteractive">
+            {`
+              !function(f,b,e,v,n,t,s)
+              {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+              n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+              if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+              n.queue=[];t=b.createElement(e);t.async=!0;
+              t.src=v;s=b.getElementsByTagName(e)[0];
+              s.parentNode.insertBefore(t,s)}(window, document,'script',
+              'https://connect.facebook.net/en_US/fbevents.js');
+              fbq('init', '${pixelId}');
+              fbq('track', 'PageView');
+            `}
+          </Script>
+        )}
       </head>
       <body className="antialiased">
+        {/* Este componente AHORA solo debe hacer ensureFbcFromUrl() */}
+        <MetaPixelInit />
+        
         {children}
 
-        {/* --- Google Analytics (gtag.js) --- */}
-        {/* Carga el script de forma asíncrona después de que la página sea interactiva */}
         <Script
           src="https://www.googletagmanager.com/gtag/js?id=G-5KQSNBQZBV"
           strategy="afterInteractive"
@@ -71,7 +93,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             window.dataLayer = window.dataLayer || [];
             function gtag(){dataLayer.push(arguments);}
             gtag('js', new Date());
-
             gtag('config', 'G-5KQSNBQZBV');
           `}
         </Script>

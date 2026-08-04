@@ -1,5 +1,5 @@
 // src/lib/api.ts
-const API_URL = process.env.NEXT_PUBLIC_GATEWAY_URL || 'http://localhost:3001';
+const API_URL = process.env.NEXT_PUBLIC_GATEWAY_URL || 'http://localhost:8080';
 
 export async function getProductByAliId(id: string) {
   try {

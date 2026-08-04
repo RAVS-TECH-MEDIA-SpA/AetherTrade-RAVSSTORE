@@ -1,24 +1,23 @@
 'use client';
+
 import { useState, useMemo, useEffect } from 'react';
 import { QuantitySelector } from './QuantitySelector';
 import TechnicalFeatures from './TechnicalFeatures';
 import { ProductTrustLogistics } from '../ProductTrustLogistics';
 import Navbar from '../Navbar';
 import Footer from '../Footer';
-
-
-declare global {
-  interface Window {
-    MercadoPago: any;
-  }
-}
+import { useCartStore } from '@/store/cartStore'; // ⚡ 1. Importamos el Cerebro Global
+// ⚡ NUEVO: Importamos las funciones del Píxel de Meta
+import { trackMetaEvent, generateEventId } from '@/lib/metaPixel'; 
 
 export default function ProductGalleryWrapper({ product }: any) {
   const [selectedVariantId, setSelectedVariantId] = useState(product.variants?.[0]?.ali_sku_id || '');
   const [activeImage, setActiveImage] = useState(product.image_url);
   const [quantity, setQuantity] = useState(1);
-  // Estado para el feedback del botón de pago
-  const [isProcessing, setIsProcessing] = useState(false);
+  const [isAdded, setIsAdded] = useState(false); // ⚡ Para el feedback del botón
+
+  // ⚡ 2. Traemos la acción de agregar al carrito desde Zustand
+  const addItem = useCartStore((state) => state.addItem);
 
   const variant = useMemo(() => 
     product.variants?.find((v: any) => v.ali_sku_id === selectedVariantId) || null
@@ -40,51 +39,49 @@ export default function ProductGalleryWrapper({ product }: any) {
   }).format(unitPrice * quantity);
 
   /**
-   * INTEGRACIÓN MERCADO PAGO (MODAL)
+   * ⚡ 3. NUEVA LÓGICA: Agregar al Carrito en lugar de Cobro Directo
    */
- const handlePayment = async () => {
-    setIsProcessing(true);
-    try {
-      // ⚡ FIX: Forzamos la URL absoluta para evitar el error de ruta relativa
-      const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
-      
-      const response = await fetch(`${baseUrl}/checkout`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          orderId: `order_${Date.now()}`,
-          items: [{
-            id: selectedVariantId || product.aliexpress_id,
-            title: product.marketing_copy?.title_localized || product.title_original,
-            price: unitPrice, // Se envía como 'price', el service lo mapea a 'unit_price'
-            quantity: quantity
-          }]
-        })
-      });
-
-      if (!response.ok) throw new Error('Error en la respuesta del servidor');
-
-      const { preferenceId } = await response.json();
-
-      const mp = new window.MercadoPago(process.env.NEXT_PUBLIC_MP_PUBLIC_KEY, {
-        locale: 'es-CL'
-      });
-
-      mp.checkout({
-        preference: { id: preferenceId },
-        autoOpen: true,
-      });
-
-    } catch (error) {
-      console.error("❌ Error:", error);
-      alert("Error al conectar con el servidor de pagos.");
-    } finally {
-      setIsProcessing(false);
+  const handleAddToCart = () => {
+    // Validamos que haya elegido una variante si el producto las tiene
+    if (product.variants?.length > 0 && !selectedVariantId) {
+      alert("Por favor selecciona una configuración disponible.");
+      return;
     }
+
+    // ⚡ NUEVO: Tracking del evento AddToCart para Meta Ads
+    try {
+      const eventId = generateEventId();
+      trackMetaEvent('AddToCart', {
+        content_ids: [String(product.id)], // Vital usar el ID de la base de datos que coincide con el feed
+        content_type: 'product',
+        value: unitPrice * quantity,
+        currency: 'CLP'
+      }, eventId);
+    } catch (error) {
+      console.warn("⚠️ Error registrando AddToCart en Meta Pixel:", error);
+    }
+
+    // Inyectamos el producto en el estado global
+    addItem({
+      id: variant ? `${product.aliexpress_id}-${variant.ali_sku_id}` : product.aliexpress_id,
+      productId: product.aliexpress_id,
+      variantId: variant?.ali_sku_id,
+      title: product.marketing_copy?.title_localized || product.title_original,
+      price: unitPrice,
+      quantity: quantity,
+      imageUrl: activeImage || product.image_url,
+      color: variant?.color,
+      size: variant?.size
+    });
+
+    // Feedback visual breve
+    setIsAdded(true);
+    setTimeout(() => setIsAdded(false), 2000);
   };
+
   return (
     <div className="min-h-screen bg-black text-white">
-      {/* 1. Navbar con z-index alto para que el sticky pase por debajo */}
+      {/* Navbar con z-index alto para que el sticky pase por debajo */}
       <div className="fixed top-0 left-0 right-0 z-[100]">
         <Navbar countryCode={'CL'}  />
       </div>
@@ -94,7 +91,6 @@ export default function ProductGalleryWrapper({ product }: any) {
           
           {/* 📸 IZQUIERDA: Galería */}
           <div className="lg:col-span-5 space-y-8 lg:sticky lg:top-28 z-10">
-            {/* Foto Principal */}
             <div className="aspect-square rounded-[3rem] overflow-hidden bg-slate-900 border border-white/5 shadow-2xl">
               <img 
                 src={activeImage} 
@@ -103,7 +99,6 @@ export default function ProductGalleryWrapper({ product }: any) {
               />
             </div>
 
-            {/* Miniaturas */}
             <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide">
               <button 
                 onClick={() => setActiveImage(product.image_url)}
@@ -146,7 +141,6 @@ export default function ProductGalleryWrapper({ product }: any) {
               </p>
             </header>
 
-            {/* ⚡ LOGÍSTICA */}
             <ProductTrustLogistics product={product} />
 
             {/* Selector de Variantes */}
@@ -184,15 +178,15 @@ export default function ProductGalleryWrapper({ product }: any) {
               </div>
               
               <button 
-                onClick={handlePayment}
-                disabled={isProcessing}
+                onClick={handleAddToCart}
+                disabled={isAdded}
                 className={`w-full py-8 rounded-2xl font-black text-2xl shadow-xl uppercase tracking-tighter transition-all active:scale-95 ${
-                  isProcessing 
-                  ? 'bg-slate-800 text-slate-500 cursor-wait' 
+                  isAdded 
+                  ? 'bg-green-500 text-white cursor-default' 
                   : 'bg-violet-600 hover:bg-violet-500 text-white'
                 }`}
               >
-                {isProcessing ? 'Procesando...' : 'Adquirir Ahora'}
+                {isAdded ? '¡Añadido al Carrito!' : 'Agregar al Carrito'}
               </button>
             </div>
 
