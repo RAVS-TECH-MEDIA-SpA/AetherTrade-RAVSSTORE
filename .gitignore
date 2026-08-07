@@ -63,3 +63,5 @@ coverage/
 # 8. CREDENCIALES GCP
 # Ignoramos las credenciales de Google Cloud para que no se suban al repositorio
 secrets/
+
+env.yaml

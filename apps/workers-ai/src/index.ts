@@ -31,7 +31,8 @@ app.use(cors({
 
 app.use(express.json()); // Necesario para parsear el body
 
-const port = process.env.PORT || 8081;
+// ⚡ FIX CLOUD RUN: Aseguramos que el fallback sea 8080
+const port = process.env.PORT || 8080;
 
 /**
  * 2. Inicialización Silenciosa
@@ -51,6 +52,12 @@ const startWorkers = async () => {
 };
 
 // 3. Rutas
+
+// ⚡ CLOUD RUN HEALTH CHECK: Agregamos el root por si GCP hace ping aquí
+app.get('/', (req, res) => {
+  res.status(200).send('Worker AI Root OK');
+});
+
 app.get('/health', (req, res) => {
   res.status(200).send('Worker AI Online');
 });
@@ -125,7 +132,8 @@ app.post('/analyze', async (req, res) => {
   });
 });
 
+// ⚡ FIX CLOUD RUN: 0.0.0.0 es crítico para que Google pueda inyectar el tráfico
 app.listen(Number(port), '0.0.0.0', () => {
-  console.log(`🚀 Ravstore Engine operando en puerto ${port}`);
+  console.log(`🚀 Ravstore Engine operando en puerto ${port} (Satisfaciendo a Cloud Run)`);
   startWorkers();
 });

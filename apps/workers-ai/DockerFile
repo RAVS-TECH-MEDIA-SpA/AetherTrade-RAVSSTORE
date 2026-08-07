@@ -26,9 +26,11 @@ COPY apps/workers-ai/package*.json ./apps/workers-ai/
 # INSTALACIÓN LIMPIA: Esto asegura que todas las dependencias estén presentes
 RUN npm install --omit=dev
 
-# Copiamos solo el código fuente y el dist desde el builder
-COPY --from=builder /app/apps/workers-ai/src ./src
-COPY --from=builder /app/apps/workers-ai/dist ./dist
+# Copiamos el dist compilado desde el builder
+COPY --from=builder /app/apps/workers-ai/dist ./apps/workers-ai/dist
 
-# Ejecutamos el worker
-CMD ["npx", "tsx", "src/workers/analysis.worker.ts"]
+# Cambiamos al directorio del worker
+WORKDIR /app/apps/workers-ai
+
+# Ejecutamos el archivo principal de Express ya compilado (¡Adiós a tsx y a los timeouts!)
+CMD ["node", "dist/index.js"]
