@@ -1,7 +1,7 @@
 [build]
   base = "apps/admin-angular"
   command = "npm run build"
-  publish = "apps/admin-angular/dist/admin-angular/browser"
+  publish = "dist/admin-angular/browser"
 
 [[plugins]]
   package = "@netlify/angular-runtime"
