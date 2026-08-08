@@ -1,7 +1,12 @@
 [build]
   base = "apps/admin-angular"
   command = "npm run build"
-  publish = "dist/admin-angular/browser"
+  publish = "dist/admin-angular"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
 
 [[plugins]]
   package = "@netlify/angular-runtime"
