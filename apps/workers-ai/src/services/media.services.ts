@@ -10,15 +10,18 @@ export class MediaService {
   private storage: Storage;
   private bucketName = 'ravstore-media';
 
-  constructor() {
-    // Al inyectar STORAGE_EMULATOR_HOST en Docker, el SDK ignora la nube
-    // Le pasamos credenciales "dummy" para que no se queje buscando facturación
-    this.storage = new Storage({
-      projectId: 'aethertrade-local',
-      credentials: { client_email: 'dummy@dummy.com', private_key: 'dummy' }
-    });
+ constructor() {
+    // Si estamos en producción, instanciamos sin parámetros para que Cloud Run inyecte los permisos automáticamente.
+    if (process.env.NODE_ENV === 'production') {
+      this.storage = new Storage();
+    } else {
+      // Entorno local con emulador
+      this.storage = new Storage({
+        projectId: 'aethertrade-local',
+        credentials: { client_email: 'dummy@dummy.com', private_key: 'dummy' }
+      });
+    }
     
-    // Ejecutamos la creación del bucket en segundo plano
     this.initLocalBucket();
   }
 

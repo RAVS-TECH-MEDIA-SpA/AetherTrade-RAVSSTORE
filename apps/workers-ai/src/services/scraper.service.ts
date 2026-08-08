@@ -107,19 +107,18 @@ export class ScraperService {
     return `${cleanName} ${config.keywords} ${countryName} ${exclusions}`.trim();
   }
 
-  async getCompetitorPrices(productName: string, country: string) {
+ async getCompetitorPrices(productName: string, country: string) {
     if (!this.apiKey) throw new Error('SERPER_API_KEY missing');
     
     const countryCode = country.toUpperCase();
     const query = this.buildQuery(productName, countryCode);
 
     try {
+      // ✅ Payload limpio y seguro inspirado en el Playground
       const { data } = await axios.post('https://google.serper.dev/search', {
         q: query,
-        gl: country.toLowerCase(),
-        hl: countryCode === 'US' ? "en" : "es",
-        autocorrect: true,
-        num: 15 // Reducimos a 15 para mayor precisión y menor latencia
+        gl: country.toLowerCase().trim(),
+        hl: countryCode === 'US' ? "en" : "es"
       }, {
         headers: { 'X-API-KEY': this.apiKey, 'Content-Type': 'application/json' }
       });
@@ -130,7 +129,6 @@ export class ScraperService {
       
       return allResults
         .map((item: any) => {
-          // Buscamos el precio en el snippet, título o el campo price de Google Shopping
           const rawText = `${item.price || ''} ${item.snippet || ''} ${item.title || ''}`;
           const price = this.parsePrice(rawText, countryCode);
 
@@ -143,7 +141,7 @@ export class ScraperService {
           };
         })
         .filter(p => p.price > 0)
-        .sort((a, b) => a.price - b.price); // Ordenamos de más barato a más caro
+        .sort((a, b) => a.price - b.price); 
 
     } catch (error: any) {
       console.error(`❌ Error en Serper (Competitors):`, error.message);
