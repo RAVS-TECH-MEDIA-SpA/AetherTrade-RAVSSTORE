@@ -1,7 +1,7 @@
 [build]
   base = "apps/admin-angular"
   command = "npm run build"
-  publish = "dist/admin-angular"
+  publish = "dist/admin-angular/browser"
 
 [[redirects]]
   from = "/*"
