@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { MercadoPagoConfig, Preference } from 'mercadopago';
+import { processProductPricing } from '@/lib/api'; // ⚡ Importamos nuestro motor de precios
 
 export async function GET(
   request: Request,
@@ -12,7 +13,8 @@ export async function GET(
     const res = await fetch(`${API_URL}/api/products/${id}`);
     if (!res.ok) return NextResponse.json({ error: 'Producto no encontrado' }, { status: 404 });
     
-    const data = await res.json();
+    let data = await res.json();
+    data = processProductPricing(data); // ⚡ Aseguramos que la ruta GET también responda con la data masticada
     return NextResponse.json(data);
   } catch (error) {
     return NextResponse.json({ error: 'Error de conexión con API Gateway' }, { status: 500 });
@@ -30,27 +32,39 @@ export async function POST(
   try {
     const { id } = await params;
     
-    // ⚡ NUEVO: Capturamos la data del comprador desde el frontend
-    const { quantity, customerInfo, shippingAddress } = await request.json();
+    // ⚡ AÑADIDO: Capturamos el variantId que ahora nos enviará el carrito
+    const { quantity, customerInfo, shippingAddress, variantId } = await request.json();
     const API_URL = process.env.API_GATEWAY_URL;
 
     if (!quantity || quantity < 1 || !shippingAddress) {
       return NextResponse.json({ error: 'Faltan datos obligatorios para el envío' }, { status: 400 });
     }
 
-    // 1. Obtener datos del producto
     const resProduct = await fetch(`${API_URL}/api/products/${id}`);
     if (!resProduct.ok) {
       return NextResponse.json({ error: 'Producto no encontrado' }, { status: 404 });
     }
-    const product = await resProduct.json();
+    
+    // ⚡ Procesamos el producto con la MISMA fórmula de la landing
+    let product = await resProduct.json();
+    product = processProductPricing(product);
 
-    const productName = product.marketing_copy?.title_localized || product.title_original;
-    const unitPrice = parseFloat(product.suggested_price_local);
+    let productName = product.marketing_copy?.title_localized || product.title_original;
+    
+    // ⚡ FIX GRAVE DE MERCADOPAGO: Asignamos el precio correcto dependiendo de la variante
+    let finalUnitPrice = product.calculated_min_price; 
+
+    if (variantId && product.variants) {
+        const selectedVariant = product.variants.find((v: any) => v.ali_sku_id === variantId || v.id === variantId);
+        if (selectedVariant) {
+            finalUnitPrice = selectedVariant.calculated_price_local;
+            productName = `${productName} - ${selectedVariant.color || ''} ${selectedVariant.size || ''}`.trim();
+        }
+    }
+
     const country = product.target_country; 
     const currency = country === 'CL' ? 'CLP' : (country === 'MX' ? 'MXN' : 'BRL');
 
-    // ⚡ 2. CREAR LA ORDEN PENDIENTE EN EL BACKEND (Para AutoDS)
     const orderRes = await fetch(`${API_URL}/api/orders`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -59,7 +73,7 @@ export async function POST(
         quantity: Number(quantity),
         customer_email: customerInfo.email,
         customer_name: customerInfo.name,
-        shipping_address: shippingAddress, // { street, city, state, zip, phone }
+        shipping_address: shippingAddress, 
         status: 'PENDING_PAYMENT'
       })
     });
@@ -67,7 +81,6 @@ export async function POST(
     if (!orderRes.ok) throw new Error('No se pudo crear la orden pendiente');
     const draftOrder = await orderRes.json();
 
-    // 3. Crear Preferencia en MercadoPago
     const preference = new Preference(client);
     const mpResponse = await preference.create({
       body: {
@@ -76,7 +89,7 @@ export async function POST(
             id: product.id,
             title: productName,
             quantity: Number(quantity),
-            unit_price: unitPrice,
+            unit_price: finalUnitPrice, // ⚡ Precio 100% blindado y redondeado
             currency_id: currency
           }
         ],
@@ -88,7 +101,6 @@ export async function POST(
         auto_return: "approved",
         notification_url: `${process.env.API_WEBHOOK_URL}/webhooks/mercadopago`,
         statement_descriptor: "AETHER TRADE",
-        // ⚡ LA CLAVE: Ahora MercadoPago sabe qué orden estamos pagando
         external_reference: draftOrder.id 
       }
     });
