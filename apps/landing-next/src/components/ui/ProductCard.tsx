@@ -1,3 +1,4 @@
+// src/components/ui/ProductCard.tsx
 'use client';
 
 import Link from 'next/link';
@@ -8,45 +9,14 @@ interface ProductCardProps {
   product: any;
 }
 
-// ⚡ Función para redondeo psicológico de retail (ej. 7081 -> 7090)
-const getPsychologicalPrice = (price: number) => {
-  if (!price) return 0;
-  return Math.ceil(price / 100) * 100 - 10;
-};
-
 export default function ProductCard({ product }: ProductCardProps) {
   const aliId = product.aliexpress_id || product.id;
   const addItem = useCartStore((state) => state.addItem);
   
-  // ⚡ FIX RENTABILIDAD: Calculamos el precio MÍNIMO real de las variantes, manteniendo el margen de la IA.
-  let baseSellingPrice = Number(product.suggested_price_local) || 0;
-  const baseCostUsd = Number(product.base_cost_usd) || 0;
-
-  // Si el producto tiene variantes y conocemos el costo base, buscamos el "Desde"
-  if (product.variants && product.variants.length > 0 && baseCostUsd > 0) {
-     let minCostUsd = baseCostUsd;
-     product.variants.forEach((v: any) => {
-         const vCost = Number(v.additional_cost_usd);
-         // Buscamos si existe una variante más barata que el costo base reportado
-         if (vCost > 0 && vCost < minCostUsd) {
-             minCostUsd = vCost;
-         }
-     });
-     // Si encontramos una variante más barata, reducimos el precio de venta proporcionalmente
-     if (minCostUsd < baseCostUsd) {
-         const ratio = minCostUsd / baseCostUsd;
-         baseSellingPrice = baseSellingPrice * ratio;
-     }
-  }
-
-  const currentPrice = getPsychologicalPrice(baseSellingPrice);
-  
-  // Si no hay precio de comparación en BD, simulamos uno 45% más alto
-  const rawOldPrice = product.compare_at_price ? Number(product.compare_at_price) : (baseSellingPrice * 1.45); 
-  const oldPrice = getPsychologicalPrice(rawOldPrice);
-
-  // Cálculo matemático del porcentaje real de descuento
-  const discountPercent = Math.round(((oldPrice - currentPrice) / oldPrice) * 100);
+  // ⚡ Leemos directamente los valores calculados por el servidor
+  const currentPrice = product.calculated_min_price || product.suggested_price_local;
+  const oldPrice = product.calculated_old_price || (currentPrice * 1.45);
+  const discountPercent = product.calculated_discount_percent || 31;
 
   const formattedPrice = new Intl.NumberFormat('es-CL', {
     style: 'currency', currency: 'CLP'
@@ -71,7 +41,7 @@ export default function ProductCard({ product }: ProductCardProps) {
   return (
     <div className="group flex flex-col bg-slate-900 border border-slate-800 hover:border-violet-500 rounded-xl overflow-hidden transition-all duration-200 hover:shadow-xl hover:shadow-violet-900/20 h-full relative">
       
-      {/* ⚡ BADGE DE DESCUENTO DINÁMICO */}
+      {/* ⚡ BADGE DE DESCUENTO DINÁMICO REAL */}
       {discountPercent > 0 && (
         <div className="absolute top-2 left-2 z-10 flex flex-col gap-1">
           <span className="bg-rose-600 text-white text-[8px] md:text-[9px] font-black px-2 py-1 rounded-sm uppercase tracking-widest shadow-sm">
@@ -80,9 +50,7 @@ export default function ProductCard({ product }: ProductCardProps) {
         </div>
       )}
 
-      {/* ZONA CLICABLE HACIA EL PRODUCTO */}
       <Link href={`/products/${aliId}`} className="flex flex-col flex-1">
-        
         <div className="aspect-square w-full bg-white relative p-2 flex items-center justify-center overflow-hidden">
           <img
             src={product.image_url}
@@ -121,7 +89,6 @@ export default function ProductCard({ product }: ProductCardProps) {
         </div>
       </Link>
 
-      {/* ZONA DE ACCIÓN */}
       <div className="px-2 pb-2 md:px-3 md:pb-3 mt-1">
         <button 
           onClick={handleQuickAdd}
