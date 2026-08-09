@@ -146,7 +146,7 @@ export class GeminiService {
 
       ### 4. LÓGICA DE DECISIÓN (WINNER & ADS):
       - "isWinner" = true SOLO SI el ROI Final es > 15% y Margen Neto > $${config.SAFETY_MARGIN.toFixed(2)} USD.
-      - "isViableForAds" = true SOLO SI el cpaMaxLocal calculado es >= 4000 ${currency}.
+      - "isViableForAds" = true SOLO SI el cpaMaxLocal calculado es >= ${targetCountry === 'CL' ? '1800' : '2.00'} ${currency}.
 
       ### 5. REGLAS DE COPYWRITING Y SEGMENTACIÓN META ADS:
       - TÍTULO: Máximo 60 caracteres en ${targetCountry === 'CL' ? 'Español' : 'Inglés'}.

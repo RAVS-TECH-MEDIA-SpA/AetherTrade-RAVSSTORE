@@ -58,9 +58,11 @@ export class GeminiService {
         5. WORD LIMIT: Exactly 2 to 3 words per string.
         6. NO BRANDS: Do not include brand names.
 
-        MARKET PARAMETERS (Technical & Blue Ocean):
-        - Focus: High efficiency, climate adaptation, or professional tools.
-        - Seasonality: Late Autumn in ${country}.
+        DROPSHIPPING MARKET PARAMETERS (Global Scale & Blue Ocean):
+        - Focus: Lightweight, high-margin, impulse-buy gadgets, smart home problem-solvers, ergonomic wellness, or pet technology.
+        - Retail Gap: Items with high perceived value that are hard to find in standard local retail or hardware stores.
+        - Logistics constraints: Strictly AVOID heavy items, large dimensions, liquids, industrial machinery, weapons, or highly fragile materials.
+        - Seasonality: Consider the specific weather and cultural needs for ${month} in ${country}.
         
         PROFITABILITY: Net Margin > $${config.SAFETY_MARGIN.toFixed(2)} USD.`;
 
