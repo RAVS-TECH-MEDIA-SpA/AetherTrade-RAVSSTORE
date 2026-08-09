@@ -9,22 +9,17 @@ import Footer from '../Footer';
 import { useCartStore } from '@/store/cartStore'; 
 import { trackMetaEvent, generateEventId } from '@/lib/metaPixel'; 
 
-// ⚡ Función para redondeo psicológico de retail (ej. 7081 -> 7090)
-const getPsychologicalPrice = (price: number) => {
-  if (!price) return 0;
-  return Math.ceil(price / 100) * 100 - 10;
-};
-
 export default function ProductGalleryWrapper({ product }: any) {
-  const [selectedVariantId, setSelectedVariantId] = useState(product.variants?.[0]?.ali_sku_id || '');
+  const [selectedVariantId, setSelectedVariantId] = useState(product.variants?.[0]?.ali_sku_id || product.variants?.[0]?.id || '');
   const [activeImage, setActiveImage] = useState(product.image_url);
   const [quantity, setQuantity] = useState(1);
   const [isAdded, setIsAdded] = useState(false); 
 
   const addItem = useCartStore((state) => state.addItem);
 
+  // ⚡ Buscamos la variante seleccionada utilizando su identificador
   const variant = useMemo(() => 
-    product.variants?.find((v: any) => v.ali_sku_id === selectedVariantId) || null
+    product.variants?.find((v: any) => v.ali_sku_id === selectedVariantId || v.id === selectedVariantId) || null
   , [selectedVariantId, product.variants]);
 
   useEffect(() => {
@@ -34,27 +29,11 @@ export default function ProductGalleryWrapper({ product }: any) {
     }
   }, [variant]);
 
-  // ⚡ FIX CRÍTICO DE RENTABILIDAD: Calculamos el precio manteniendo el margen de la IA
-  const baseSellingPrice = Number(product.suggested_price_local) || 0;
-  const baseCostUsd = Number(product.base_cost_usd) || 0;
-  const variantCostUsd = variant ? Number(variant.additional_cost_usd) : 0;
-  
-  let rawUnitPrice = baseSellingPrice;
-
-  // Proporción exacta para mantener el margen de ganancia en cada variante
-  if (baseCostUsd > 0 && variantCostUsd > 0) {
-     const ratio = variantCostUsd / baseCostUsd;
-     rawUnitPrice = baseSellingPrice * ratio;
-  } else if (variantCostUsd > 0 && !baseCostUsd) {
-     // Fallback de seguridad si no tenemos el costo base
-     const exchangeRate = Number(product.rate_to_usd) || 1000;
-     const estimatedCostClp = variantCostUsd * exchangeRate;
-     if (estimatedCostClp > baseSellingPrice) {
-         rawUnitPrice = estimatedCostClp * 2; // Forzamos margen de seguridad x2
-     }
-  }
-
-  const unitPrice = getPsychologicalPrice(rawUnitPrice);
+  // ⚡ LÓGICA LIMPIA: El frontend SOLO lee lo que el servidor ya calculó
+  const unitPrice = variant?.calculated_price_local 
+    ?? product.calculated_min_price 
+    ?? Number(product.suggested_price_local) 
+    ?? 0;
 
   const formattedTotal = new Intl.NumberFormat('es-CL', {
     style: 'currency', currency: 'CLP'
@@ -79,9 +58,9 @@ export default function ProductGalleryWrapper({ product }: any) {
     }
 
     addItem({
-      id: variant ? `${product.aliexpress_id}-${variant.ali_sku_id}` : product.aliexpress_id,
+      id: variant ? `${product.aliexpress_id}-${variant.ali_sku_id || variant.id}` : product.aliexpress_id,
       productId: product.aliexpress_id,
-      variantId: variant?.ali_sku_id,
+      variantId: variant?.ali_sku_id || variant?.id,
       title: product.marketing_copy?.title_localized || product.title_original,
       price: unitPrice, 
       quantity: quantity,
@@ -122,12 +101,13 @@ export default function ProductGalleryWrapper({ product }: any) {
 
               {product.variants?.filter((v: any) => v.image_url || v.image).map((v: any) => {
                 const img = v.image_url || v.image;
+                const vId = v.ali_sku_id || v.id;
                 return (
                   <button 
-                    key={v.ali_sku_id}
+                    key={vId}
                     onClick={() => {
                       setActiveImage(img);
-                      setSelectedVariantId(v.ali_sku_id);
+                      setSelectedVariantId(vId);
                     }}
                     className={`w-20 h-20 flex-shrink-0 rounded-2xl overflow-hidden border-2 transition-all ${activeImage === img ? 'border-violet-500 scale-105' : 'border-transparent opacity-50 hover:opacity-100'}`}
                   >
@@ -159,19 +139,22 @@ export default function ProductGalleryWrapper({ product }: any) {
               <div className="space-y-4">
                 <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Configuraciones Disponibles</span>
                 <div className="flex flex-wrap gap-3">
-                  {product.variants.map((v: any) => (
-                    <button
-                      key={v.ali_sku_id}
-                      onClick={() => setSelectedVariantId(v.ali_sku_id)}
-                      className={`px-6 py-4 rounded-xl border-2 text-sm font-bold transition-all ${
-                        selectedVariantId === v.ali_sku_id 
-                        ? 'border-violet-500 bg-violet-600 text-white shadow-lg' 
-                        : 'border-white/10 text-slate-400 bg-white/5 hover:border-white/20'
-                      }`}
-                    >
-                      {v.color || 'Opción'} {v.size ? `• ${v.size}` : ''}
-                    </button>
-                  ))}
+                  {product.variants.map((v: any) => {
+                    const vId = v.ali_sku_id || v.id;
+                    return (
+                      <button
+                        key={vId}
+                        onClick={() => setSelectedVariantId(vId)}
+                        className={`px-6 py-4 rounded-xl border-2 text-sm font-bold transition-all ${
+                          selectedVariantId === vId 
+                          ? 'border-violet-500 bg-violet-600 text-white shadow-lg' 
+                          : 'border-white/10 text-slate-400 bg-white/5 hover:border-white/20'
+                        }`}
+                      >
+                        {v.color || 'Opción'} {v.size ? `• ${v.size}` : ''}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             )}
