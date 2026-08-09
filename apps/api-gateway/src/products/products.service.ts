@@ -2,16 +2,10 @@
 import {pool} from '../database.js'; // Asegúrate que esta ruta apunte a tu pool de pg
 
 /**
- * Obtiene un producto por su AliExpress ID
- * Fix UUID: Comparamos aliexpress_id como texto
+ * Obtiene un producto por su ID interno (UUID) o su AliExpress ID
+ * ⚡ FIX: Comparamos ambas columnas como texto para soportar la transición a UUID de forma invisible sin romper controladores
  */
-
-
-/**
- * Obtiene un producto por su AliExpress ID
- * ⚡ FIX: Comparamos aliexpress_id como texto para evitar error de sintaxis UUID
- */
-export const findByAliExpressId = async (aliexpressId: string) => {
+export const findByAliExpressId = async (idOrAliId: string) => {
   const query = `
     SELECT 
       p.*,
@@ -26,12 +20,12 @@ export const findByAliExpressId = async (aliexpressId: string) => {
       p.raw_details->'shipping'->'trackingAvailable' as has_tracking
     FROM products p
     LEFT JOIN categories c ON p.category_id = c.id
-    WHERE p.aliexpress_id::text = $1
+    WHERE p.id::text = $1 OR p.aliexpress_id::text = $1
     LIMIT 1;
   `;
 
   try {
-    const res = await pool.query(query, [aliexpressId]);
+    const res = await pool.query(query, [idOrAliId]);
     return res.rows[0] || null;
   } catch (error: any) {
     console.error(`❌ Error en DB (findByAliExpressId): ${error.message}`);
@@ -55,4 +49,3 @@ export const findAllWinners = async (country?: string) => {
   const res = await pool.query(query, values);
   return res.rows;
 };
-

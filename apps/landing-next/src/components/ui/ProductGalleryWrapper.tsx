@@ -1,3 +1,4 @@
+// src/components/ui/ProductGalleryWrapper.tsx
 'use client';
 
 import { useState, useMemo, useEffect } from 'react';
@@ -29,11 +30,8 @@ export default function ProductGalleryWrapper({ product }: any) {
     }
   }, [variant]);
 
-  // ⚡ LÓGICA LIMPIA: El frontend SOLO lee lo que el servidor ya calculó
-  const unitPrice = variant?.calculated_price_local 
-    ?? product.calculated_min_price 
-    ?? Number(product.suggested_price_local) 
-    ?? 0;
+  // ⚡ LÓGICA ULTRA LIMPIA: Solo leemos los campos calculados seguros del servidor
+  const unitPrice = variant?.calculated_price_local ?? product.calculated_min_price ?? 0;
 
   const formattedTotal = new Intl.NumberFormat('es-CL', {
     style: 'currency', currency: 'CLP'

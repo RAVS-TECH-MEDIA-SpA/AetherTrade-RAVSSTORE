@@ -4,7 +4,6 @@ import { ShieldCheck, Box, Calendar } from 'lucide-react';
 
 export const ProductTrustLogistics = ({ product }: { product: any }) => {
   // 🛡️ Mapeo según tu captura de tabla 'products'
-  // Extraemos de raw_details donde el worker guarda la data cruda de la API
   const delivery = product?.raw_details?.delivery || {};
   const trust = product?.raw_details?.trust || {};
   
@@ -21,15 +20,14 @@ export const ProductTrustLogistics = ({ product }: { product: any }) => {
           <div className="p-2 bg-violet-400/10 rounded-lg">
             <Calendar size={18} />
           </div>
-          <span className="text-[10px] font-black uppercase tracking-[0.2em]">Entrega Gratis</span>
+          <span className="text-[10px] font-black uppercase tracking-[0.2em]">Entrega Estimada</span>
         </div>
-        <p className="text-lg font-bold text-white leading-tight">
-          {delivery.estimateDate 
-            ? new Date(delivery.estimateDate).toLocaleDateString('es-CL', { month: 'long', day: 'numeric' })
-            : 'Envío Internacional'}
+        <p className="text-lg font-bold text-white leading-tight capitalize">
+          {/* ⚡ AQUI USAMOS LA NUEVA FECHA DINÁMICA CALCULADA POR EL FRONTEND */}
+          {product?.calculated_estimated_delivery || 'Envío Internacional'}
         </p>
         <p className="text-[10px] text-slate-500 mt-2 font-bold uppercase tracking-wider">
-          {delivery.isFree || product.shipping_cost_usd === 0 ? '🚀 Envío Gratis' : 'Logística Asegurada'}
+          {delivery.isFree || product?.shipping_cost_usd === 0 ? '🚀 Envío Gratis' : 'Logística Asegurada'}
         </p>
       </div>
 

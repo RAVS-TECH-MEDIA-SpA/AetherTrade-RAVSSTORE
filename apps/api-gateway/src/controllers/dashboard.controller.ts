@@ -146,14 +146,23 @@ export const getDashboardStats = async (req: Request, res: Response) => {
 
 /**
  * Inventario con JOINS para resolver el problema del VAT y rate_to_usd
+ * UPDATE: Se agrega subquery JSON_AGG para incluir las variantes en el payload de la portada.
  */
 export const getInventory = async (req: Request, res: Response) => {
   try {
     const { status, country } = req.query;
     
-    // Mejorado con LEFT JOIN para traer reglas fiscales y de cambio
+    // Mejorado con LEFT JOIN para traer reglas fiscales, de cambio Y las VARIANTES (JSON_AGG)
     let query = `
-      SELECT p.*, t.vat_rate, er.rate_to_usd 
+      SELECT 
+        p.*, 
+        t.vat_rate, 
+        er.rate_to_usd,
+        (
+          SELECT JSON_AGG(v.* ORDER BY v.id ASC)
+          FROM product_variants v 
+          WHERE v.product_id = p.id
+        ) as variants
       FROM products p
       LEFT JOIN tax_rules t ON p.target_country = t.country_code
       LEFT JOIN exchange_rates er ON t.currency_code = er.currency_code

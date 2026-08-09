@@ -268,6 +268,28 @@ export async function listenForCandidates() {
           detail.properties = await gemini.translateAttributes(rawProperties, targetLang);
         }
 
+      // --- ⚡ LÓGICA DE DÍAS DE TRÁNSITO AL VUELO ---
+      let estimatedTransitDays = 15; // Fallback por defecto si no viene dato
+      
+      try {
+        const rawEstimateDateStr = detail.delivery?.estimateDate;
+        if (rawEstimateDateStr) {
+          const estimatedDate = new Date(rawEstimateDateStr);
+          const currentDate = new Date();
+          
+          if (!isNaN(estimatedDate.getTime())) {
+            const diffTime = estimatedDate.getTime() - currentDate.getTime();
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            
+            if (diffDays > 0 && diffDays <= 60) {
+              estimatedTransitDays = diffDays;
+            }
+          }
+        }
+      } catch (e) {
+        console.warn(`⚠️ [TRÁNSITO] No se pudo calcular el tránsito para ${aliexpress_id}. Usando default 15 días.`);
+      }
+
       // --- 7.4 PRODUCTO ---
       const insertQuery = `
         INSERT INTO products (
@@ -275,13 +297,14 @@ export async function listenForCandidates() {
           image_url, video_url, local_images, base_cost_usd, shipping_cost_usd, 
           suggested_price_local, suggested_price, roi_percent, net_margin_usd, 
           vat_rate, rate_to_usd, target_country, status, marketing_copy, 
-          ai_verdict, raw_details
+          ai_verdict, raw_details, estimated_transit_days
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, 'WINNER', $18, $19, $20)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, 'WINNER', $18, $19, $20, $21)
         ON CONFLICT (aliexpress_id, target_country) DO UPDATE SET 
           updated_at = NOW(),
           status = 'WINNER',
-          raw_details = EXCLUDED.raw_details
+          raw_details = EXCLUDED.raw_details,
+          estimated_transit_days = EXCLUDED.estimated_transit_days
         RETURNING id;
       `;
 
@@ -295,7 +318,8 @@ export async function listenForCandidates() {
         parseFloat(vat_rate), parseFloat(rate_to_usd), targetCountry,
         JSON.stringify(analysis.copywriting), 
         analysis.analysis.reasoning, 
-        JSON.stringify(detail)
+        JSON.stringify(detail),
+        estimatedTransitDays
       ]);
       
       const internalProductId = productRes.rows[0].id;
