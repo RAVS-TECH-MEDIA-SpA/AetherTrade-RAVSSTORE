@@ -6,11 +6,10 @@ import TechnicalFeatures from './TechnicalFeatures';
 import { ProductTrustLogistics } from '../ProductTrustLogistics';
 import Navbar from '../Navbar';
 import Footer from '../Footer';
-import { useCartStore } from '@/store/cartStore'; // ⚡ 1. Importamos el Cerebro Global
-// ⚡ NUEVO: Importamos las funciones del Píxel de Meta
+import { useCartStore } from '@/store/cartStore'; 
 import { trackMetaEvent, generateEventId } from '@/lib/metaPixel'; 
 
-// ⚡ NUEVO: Función para redondeo psicológico de retail (ej. 7081 -> 7090)
+// ⚡ Función para redondeo psicológico de retail (ej. 7081 -> 7090)
 const getPsychologicalPrice = (price: number) => {
   if (!price) return 0;
   return Math.ceil(price / 100) * 100 - 10;
@@ -20,9 +19,8 @@ export default function ProductGalleryWrapper({ product }: any) {
   const [selectedVariantId, setSelectedVariantId] = useState(product.variants?.[0]?.ali_sku_id || '');
   const [activeImage, setActiveImage] = useState(product.image_url);
   const [quantity, setQuantity] = useState(1);
-  const [isAdded, setIsAdded] = useState(false); // ⚡ Para el feedback del botón
+  const [isAdded, setIsAdded] = useState(false); 
 
-  // ⚡ 2. Traemos la acción de agregar al carrito desde Zustand
   const addItem = useCartStore((state) => state.addItem);
 
   const variant = useMemo(() => 
@@ -36,10 +34,25 @@ export default function ProductGalleryWrapper({ product }: any) {
     }
   }, [variant]);
 
-  // ⚡ FIX: Obtenemos el precio base o el de la variante, y le aplicamos el redondeo psicológico
-  const rawUnitPrice = variant && Number(variant.additional_cost_usd) > 0
-    ? (Number(variant.additional_cost_usd) * Number(product.rate_to_usd || 1))
-    : Number(product.suggested_price_local);
+  // ⚡ FIX CRÍTICO DE RENTABILIDAD: Calculamos el precio manteniendo el margen de la IA
+  const baseSellingPrice = Number(product.suggested_price_local) || 0;
+  const baseCostUsd = Number(product.base_cost_usd) || 0;
+  const variantCostUsd = variant ? Number(variant.additional_cost_usd) : 0;
+  
+  let rawUnitPrice = baseSellingPrice;
+
+  // Proporción exacta para mantener el margen de ganancia en cada variante
+  if (baseCostUsd > 0 && variantCostUsd > 0) {
+     const ratio = variantCostUsd / baseCostUsd;
+     rawUnitPrice = baseSellingPrice * ratio;
+  } else if (variantCostUsd > 0 && !baseCostUsd) {
+     // Fallback de seguridad si no tenemos el costo base
+     const exchangeRate = Number(product.rate_to_usd) || 1000;
+     const estimatedCostClp = variantCostUsd * exchangeRate;
+     if (estimatedCostClp > baseSellingPrice) {
+         rawUnitPrice = estimatedCostClp * 2; // Forzamos margen de seguridad x2
+     }
+  }
 
   const unitPrice = getPsychologicalPrice(rawUnitPrice);
 
@@ -47,50 +60,42 @@ export default function ProductGalleryWrapper({ product }: any) {
     style: 'currency', currency: 'CLP'
   }).format(unitPrice * quantity);
 
-  /**
-   * ⚡ 3. NUEVA LÓGICA: Agregar al Carrito en lugar de Cobro Directo
-   */
   const handleAddToCart = () => {
-    // Validamos que haya elegido una variante si el producto las tiene
     if (product.variants?.length > 0 && !selectedVariantId) {
       alert("Por favor selecciona una configuración disponible.");
       return;
     }
 
-    // ⚡ NUEVO: Tracking del evento AddToCart para Meta Ads
     try {
       const eventId = generateEventId();
       trackMetaEvent('AddToCart', {
-        content_ids: [String(product.id)], // Vital usar el ID de la base de datos que coincide con el feed
+        content_ids: [String(product.id)], 
         content_type: 'product',
-        value: unitPrice * quantity, // Se envía el valor con el redondeo psicológico aplicado
+        value: unitPrice * quantity, 
         currency: 'CLP'
       }, eventId);
     } catch (error) {
       console.warn("⚠️ Error registrando AddToCart en Meta Pixel:", error);
     }
 
-    // Inyectamos el producto en el estado global
     addItem({
       id: variant ? `${product.aliexpress_id}-${variant.ali_sku_id}` : product.aliexpress_id,
       productId: product.aliexpress_id,
       variantId: variant?.ali_sku_id,
       title: product.marketing_copy?.title_localized || product.title_original,
-      price: unitPrice, // Precio redondeado
+      price: unitPrice, 
       quantity: quantity,
       imageUrl: activeImage || product.image_url,
       color: variant?.color,
       size: variant?.size
     });
 
-    // Feedback visual breve
     setIsAdded(true);
     setTimeout(() => setIsAdded(false), 2000);
   };
 
   return (
     <div className="min-h-screen bg-black text-white">
-      {/* Navbar con z-index alto para que el sticky pase por debajo */}
       <div className="fixed top-0 left-0 right-0 z-[100]">
         <Navbar countryCode={'CL'}  />
       </div>
@@ -98,7 +103,6 @@ export default function ProductGalleryWrapper({ product }: any) {
       <main className="max-w-7xl mx-auto px-6 pt-32 pb-20">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-20 items-start">
           
-          {/* 📸 IZQUIERDA: Galería */}
           <div className="lg:col-span-5 space-y-8 lg:sticky lg:top-28 z-10">
             <div className="aspect-square rounded-[3rem] overflow-hidden bg-slate-900 border border-white/5 shadow-2xl">
               <img 
@@ -134,7 +138,6 @@ export default function ProductGalleryWrapper({ product }: any) {
             </div>
           </div>
 
-          {/* 🛒 DERECHA: Commerce */}
           <div className="lg:col-span-7 flex flex-col space-y-10">
             <header className="space-y-6">
               <div className="flex items-center gap-4">
@@ -152,7 +155,6 @@ export default function ProductGalleryWrapper({ product }: any) {
 
             <ProductTrustLogistics product={product} />
 
-            {/* Selector de Variantes */}
             {product.variants?.length > 0 && (
               <div className="space-y-4">
                 <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Configuraciones Disponibles</span>
@@ -174,11 +176,9 @@ export default function ProductGalleryWrapper({ product }: any) {
               </div>
             )}
 
-            {/* Caja de Compra */}
             <div className="bg-slate-900/60 border border-white/5 rounded-[3rem] p-10 space-y-8 shadow-2xl backdrop-blur-xl">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6">
                 <div className="flex flex-col">
-                  {/* ⚡ FIX COPY: Cambiamos 'Inversión Final' por 'Precio de Oferta' */}
                   <span className="text-[10px] font-black text-violet-400 uppercase tracking-widest mb-2 italic">Precio de Oferta</span>
                   <span className="text-7xl font-black text-white tabular-nums tracking-tighter">{formattedTotal}</span>
                 </div>
