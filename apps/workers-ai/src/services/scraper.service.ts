@@ -25,10 +25,11 @@ export class ScraperService {
   private readonly MARKET_MAP: Record<string, MarketConfig> = {
     'CL': {
       currency: '$', 
-      localisms: 'despacho gratis entrega', // ⚡ Quitado los paréntesis y OR
+      localisms: 'despacho gratis entrega',
       keywords: 'precio comprar',
       sites: ['mercadolibre.cl', 'falabella.com', 'paris.cl', 'lider.cl', 'sodimac.cl'],
-      minValidPrice: 2500
+      // ⚡ Aumentado a 3990 para ignorar accesorios diminutos, ventas "por metro" o errores.
+      minValidPrice: 3990 
   },
     'MX': {
       currency: '$', 
@@ -53,12 +54,11 @@ export class ScraperService {
   /**
    * Purifica el nombre para evitar que el ruido de AliExpress afecte el SEO en Google
    */
- // 2. Haz el limpiador más agresivo
   public cleanProductName(name: string): string {
     if (!name) return "";
     return name
       .replace(/(202[0-9]|New|Global|Original|Portable|Mini|Hot Sale|Stock|SKU|Piece|Lot)/gi, '')
-      .replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ ]/g, ' ') // ⚡ Cambiado a espacio en vez de vacío
+      .replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ ]/g, ' ') 
       .split(' ')
       .filter(word => word.length > 2)
       .slice(0, 4) 
@@ -72,49 +72,65 @@ export class ScraperService {
   private parsePrice(text: string, country: string): number {
     if (!text) return 0;
 
-    // Chile no usa decimales en el retail online, el regex debe ser estricto con los puntos de miles
+    console.log(`🔍 [DEBUG PARSEPRICE] Entrada original: "${text}"`);
+
+    // ⚡ FIX COMAS: El regex de Chile ahora admite tanto puntos (\.) como comas (,) en los miles.
     const priceRegex = country === 'CL' 
-      ? /(?:\$|CLP)\s?([0-9]{1,3}(?:\.[0-9]{3})+|[0-9]{3,7})/i 
+      ? /(?:\$|CLP)\s?([0-9]{1,3}(?:[\.,][0-9]{3})+|[0-9]{3,7})/i 
       : /(?:\$|USD|€|MXN)\s?([0-9]{1,3}(?:,[0-9]{3})*(?:\.[0-9]{2})?)/i;
 
     const match = text.match(priceRegex);
+    
+    console.log(`🔍 [DEBUG PARSEPRICE] Regex match para ${country}:`, match ? match[1] : "NO MATCH");
+
     if (!match) return 0;
 
     let valueStr = match[1];
 
     if (country === 'CL') {
-      valueStr = valueStr.replace(/\./g, ''); // En Chile el punto es separador de miles
+      // ⚡ FIX LIMPIEZA: Removemos tanto puntos como comas para obtener el entero final puro.
+      valueStr = valueStr.replace(/[\.,]/g, ''); 
     } else {
-      valueStr = valueStr.replace(/,/g, ''); // En US/MX la coma es separador de miles
+      valueStr = valueStr.replace(/,/g, ''); 
     }
 
     const price = parseFloat(valueStr);
     
-    // Validamos contra el piso configurado en constants o el local
-    const minPrice = MARKET_CONFIG[country as keyof typeof MARKET_CONFIG]?.MIN_PRICE || this.MARKET_MAP[country]?.minValidPrice || 0;
-    return (price >= minPrice) ? price : 0;
+    console.log(`🔍 [DEBUG PARSEPRICE] Valor convertido: ${price}`);
+
+    // ⚡ FIX BUG DE MONEDAS: Usamos EXCLUSIVAMENTE el minValidPrice de este archivo (que está en moneda local).
+    // Jamás usamos MARKET_CONFIG.MIN_PRICE aquí porque eso está en dólares (USD).
+    const minPrice = this.MARKET_MAP[country]?.minValidPrice || 0;
+    
+    if (price < minPrice) {
+       console.log(`⚠️ [DEBUG PARSEPRICE] Precio descartado (${price}) por ser menor al piso local configurado (${minPrice}).`);
+       return 0;
+    }
+
+    return price;
   }
 
  private buildQuery(name: string, country: string): string {
     const config = this.MARKET_MAP[country.toUpperCase()] || this.MARKET_MAP['US'];
     const cleanName = this.cleanProductName(name);
     
-    // ⚡ SIMPLIFICADO: En vez de un string gigante con OR, usamos una búsqueda limpia y directa.
-    // Ejemplo: "Foco LED IP68 Exterior precio comprar chile -site:aliexpress.com"
     const countryName = country.toUpperCase() === 'CL' ? 'chile' : country.toUpperCase() === 'MX' ? 'mexico' : '';
     const exclusions = "-site:aliexpress.com -site:alibaba.com -site:temu.com";
     
-    return `${cleanName} ${config.keywords} ${countryName} ${exclusions}`.trim();
+    const finalQuery = `${cleanName} ${config.keywords} ${countryName} ${exclusions}`.trim();
+    
+    console.log(`🔍 [DEBUG BUILDQUERY] Query generada: "${finalQuery}"`);
+    
+    return finalQuery;
   }
 
- async getCompetitorPrices(productName: string, country: string) {
+  async getCompetitorPrices(productName: string, country: string) {
     if (!this.apiKey) throw new Error('SERPER_API_KEY missing');
     
     const countryCode = country.toUpperCase();
     const query = this.buildQuery(productName, countryCode);
 
     try {
-      // ✅ Payload limpio y seguro inspirado en el Playground
       const { data } = await axios.post('https://google.serper.dev/search', {
         q: query,
         gl: country.toLowerCase().trim(),
@@ -122,6 +138,8 @@ export class ScraperService {
       }, {
         headers: { 'X-API-KEY': this.apiKey, 'Content-Type': 'application/json' }
       });
+
+      console.log(`🔍 [DEBUG SERPER SEARCH] Resultados para "${query}":`, JSON.stringify(data.shopping?.slice(0, 2), null, 2));
 
       const organic = data.organic || [];
       const shopping = data.shopping || [];

@@ -70,7 +70,7 @@ export async function listenForCandidates() {
     }
       console.log(` [] payload:`, payload);
 
-// =========================================================
+    // =========================================================
     // ⚡ FIX CONCURRENCIA: EL CANDADO SECUENCIAL
     // =========================================================
     if (!payload.aliexpress_id || !payload.batchId) {
@@ -95,7 +95,7 @@ export async function listenForCandidates() {
     try {
       console.log(`\n🔍 [ANALISIS PROFUNDO] ID: ${aliexpress_id} | Batch: ${batchId}`);
 
-   // 1. Obtención de Data Profunda (⚡ JITTER MASIVO ANTI-BAN GEMINI)
+      // 1. Obtención de Data Profunda (⚡ JITTER MASIVO ANTI-BAN GEMINI)
       // Jitter entre 10 segundos y 2 MINUTOS para esparcir los 10 productos a lo largo del tiempo
       const minJitter = 10000;
       const maxJitter = 120000; 
@@ -198,7 +198,7 @@ export async function listenForCandidates() {
       // ==========================================================
       await client.query('BEGIN');
 
-      // --- 7.1 CATEGORÍA (Modificado para inferir desde Gemini y solucionado TS) ---
+      // --- 7.1 CATEGORÍA (Modificado para evitar error de Slug duplicado) ---
       let dbCategoryId = null; 
       const rawCatId = detail.category_id || (detail as any).catId; 
       
@@ -212,7 +212,7 @@ export async function listenForCandidates() {
           let finalCategoryName = 'Accesorios y Gadgets';
           try {
             const promptCat = `Clasifica el producto "${localizedTitle}" en una categoría general para tienda online. Máximo 3 palabras, en Español. Ejemplos: "Electrónica", "Deportes y Ciclismo", "Hogar", "Salud y Belleza". Responde SOLO con el nombre de la categoría, sin comillas.`;
-           const inferredCat = await gemini.askGenericPrompt(promptCat);
+            const inferredCat = await gemini.askGenericPrompt(promptCat);
             if (inferredCat && inferredCat.length > 0 && inferredCat.length < 50) {
               finalCategoryName = inferredCat.replace(/['"]/g, '').trim();
             }
@@ -228,16 +228,22 @@ export async function listenForCandidates() {
             .replace(/[^a-z0-9]+/g, '-') 
             .replace(/(^-|-$)+/g, ''); 
 
-          const newCat = await client.query(
-            'INSERT INTO categories (ali_category_id, name, slug) VALUES ($1, $2, $3) RETURNING id', 
-            [String(rawCatId), finalCategoryName, categorySlug]
-          );
+          // ⚡ FIX: Usamos UPSERT (ON CONFLICT) para evitar el crasheo si el slug ya existe
+          const newCat = await client.query(`
+            INSERT INTO categories (ali_category_id, name, slug) 
+            VALUES ($1, $2, $3) 
+            ON CONFLICT (slug) DO UPDATE SET 
+              name = EXCLUDED.name,
+              ali_category_id = EXCLUDED.ali_category_id
+            RETURNING id
+          `, [String(rawCatId), finalCategoryName, categorySlug]);
+          
           dbCategoryId = newCat.rows[0].id;
-          console.log(`📁 Nueva categoría inferida y creada en BD: ${finalCategoryName} (Slug: ${categorySlug})`);
+          console.log(`📁 Categoría verificada/creada en BD: ${finalCategoryName} (Slug: ${categorySlug})`);
         }
       }
 
-      // --- 7.2 PROVEEDOR (Ajustado para llaves reales de RapidAPI y solucionado TS) ---
+      // --- 7.2 PROVEEDOR ---
       let dbSupplierId = null;
       const rawSuppId = detail.supplier_id || (detail as any).seller?.storeId;
       const storeName = detail.store_name || (detail as any).seller?.storeTitle || 'Unknown Store';
@@ -377,5 +383,3 @@ export async function listenForCandidates() {
     }
   });
 }
-
-// listenForCandidates();

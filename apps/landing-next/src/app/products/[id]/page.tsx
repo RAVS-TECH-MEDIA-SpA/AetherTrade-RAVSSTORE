@@ -3,7 +3,6 @@ import { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { getProductByAliId } from '@/lib/api';
 import ProductGalleryWrapper from '@/components/ui/ProductGalleryWrapper';
-// ⚡ NUEVO: Importamos el tracker del Píxel de Meta
 import ViewContentTracker from './components/ViewContentTracker';
 
 interface Props {
@@ -23,14 +22,18 @@ export default async function ProductPage({ params }: Props) {
 
   if (!product) notFound();
 
+  // ⚡ FIX: Sincronizamos el precio que enviaremos a Meta Ads aplicando el mismo redondeo
+  const basePrice = Number(product.suggested_price_local) || 0;
+  const roundedPriceLocal = Math.ceil(basePrice / 100) * 100 - 10;
+
   return (
     <main className="min-h-screen bg-[#020617] text-white selection:bg-violet-500/30">
       
-      {/* ⚡ NUEVO: Inyectamos el Pixel Tracker de forma invisible */}
+      {/* ⚡ NUEVO: Inyectamos el Pixel Tracker de forma invisible con el precio redondeado */}
       <ViewContentTracker 
         product={{
-          id: String(product.id), // Vital que sea el ID de la base de datos (g:id)
-          suggested_price_local: Number(product.suggested_price_local),
+          id: String(product.id), 
+          suggested_price_local: roundedPriceLocal,
           title: product.marketing_copy?.title_localized || product.title_original
         }} 
       />

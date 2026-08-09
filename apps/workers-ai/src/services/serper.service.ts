@@ -22,10 +22,10 @@ export class SerperService {
   }
 
   /**
- * Obtiene el video promocional siguiendo la jerarquía:
- * 1. AliExpress Nativo (Máxima fidelidad)
- * 2. Serper / YouTube (Búsqueda refinada)
- */
+   * Obtiene el video promocional siguiendo la jerarquía:
+   * 1. AliExpress Nativo (Máxima fidelidad)
+   * 2. Serper / YouTube (Búsqueda refinada)
+   */
 async getPromotionalVideo(productTitle: string, aliVideoUrl?: string | null): Promise<string | null> {
     // PASO 1: PRIORIDAD ABSOLUTA - Video de AliExpress
     if (aliVideoUrl && aliVideoUrl.trim() !== "") {
@@ -89,6 +89,9 @@ async getPromotionalVideo(productTitle: string, aliVideoUrl?: string | null): Pr
         { headers: { 'X-API-KEY': this.apiKey, 'Content-Type': 'application/json' } }
       );
 
+      // LOG DIAGNÓSTICO: Ver respuesta cruda de videos
+      console.log(`🔍 [DEBUG SERPER VIDEO] Respuesta para query "${query}":`, JSON.stringify(response.data.videos?.slice(0, 2), null, 2));
+
       const videos = response.data.videos || [];
       if (videos.length === 0) return null;
 
@@ -105,7 +108,8 @@ async getPromotionalVideo(productTitle: string, aliVideoUrl?: string | null): Pr
 
       // Si no hay uno de YouTube perfecto, devolvemos el primero de la lista
       return bestVideo?.link || videos[0].link;
-    } catch {
+    } catch (error) {
+      console.error('❌ [DEBUG SERPER VIDEO] Error:', error);
       return null;
     }
   }

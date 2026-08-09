@@ -10,6 +10,12 @@ import { useCartStore } from '@/store/cartStore'; // ⚡ 1. Importamos el Cerebr
 // ⚡ NUEVO: Importamos las funciones del Píxel de Meta
 import { trackMetaEvent, generateEventId } from '@/lib/metaPixel'; 
 
+// ⚡ NUEVO: Función para redondeo psicológico de retail (ej. 7081 -> 7090)
+const getPsychologicalPrice = (price: number) => {
+  if (!price) return 0;
+  return Math.ceil(price / 100) * 100 - 10;
+};
+
 export default function ProductGalleryWrapper({ product }: any) {
   const [selectedVariantId, setSelectedVariantId] = useState(product.variants?.[0]?.ali_sku_id || '');
   const [activeImage, setActiveImage] = useState(product.image_url);
@@ -30,9 +36,12 @@ export default function ProductGalleryWrapper({ product }: any) {
     }
   }, [variant]);
 
-  const unitPrice = variant && Number(variant.additional_cost_usd) > 0
+  // ⚡ FIX: Obtenemos el precio base o el de la variante, y le aplicamos el redondeo psicológico
+  const rawUnitPrice = variant && Number(variant.additional_cost_usd) > 0
     ? (Number(variant.additional_cost_usd) * Number(product.rate_to_usd || 1))
     : Number(product.suggested_price_local);
+
+  const unitPrice = getPsychologicalPrice(rawUnitPrice);
 
   const formattedTotal = new Intl.NumberFormat('es-CL', {
     style: 'currency', currency: 'CLP'
@@ -54,7 +63,7 @@ export default function ProductGalleryWrapper({ product }: any) {
       trackMetaEvent('AddToCart', {
         content_ids: [String(product.id)], // Vital usar el ID de la base de datos que coincide con el feed
         content_type: 'product',
-        value: unitPrice * quantity,
+        value: unitPrice * quantity, // Se envía el valor con el redondeo psicológico aplicado
         currency: 'CLP'
       }, eventId);
     } catch (error) {
@@ -67,7 +76,7 @@ export default function ProductGalleryWrapper({ product }: any) {
       productId: product.aliexpress_id,
       variantId: variant?.ali_sku_id,
       title: product.marketing_copy?.title_localized || product.title_original,
-      price: unitPrice,
+      price: unitPrice, // Precio redondeado
       quantity: quantity,
       imageUrl: activeImage || product.image_url,
       color: variant?.color,
@@ -169,7 +178,8 @@ export default function ProductGalleryWrapper({ product }: any) {
             <div className="bg-slate-900/60 border border-white/5 rounded-[3rem] p-10 space-y-8 shadow-2xl backdrop-blur-xl">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6">
                 <div className="flex flex-col">
-                  <span className="text-[10px] font-black text-violet-400 uppercase tracking-widest mb-2 italic">Inversión Final</span>
+                  {/* ⚡ FIX COPY: Cambiamos 'Inversión Final' por 'Precio de Oferta' */}
+                  <span className="text-[10px] font-black text-violet-400 uppercase tracking-widest mb-2 italic">Precio de Oferta</span>
                   <span className="text-7xl font-black text-white tabular-nums tracking-tighter">{formattedTotal}</span>
                 </div>
                 <div className="w-full sm:w-40">

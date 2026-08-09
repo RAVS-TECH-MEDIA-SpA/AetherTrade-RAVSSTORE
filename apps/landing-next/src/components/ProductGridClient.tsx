@@ -1,4 +1,3 @@
-// src/components/ProductGridClient.tsx
 'use client';
 import { useState, useMemo } from 'react';
 import ProductCard from './ui/ProductCard';
@@ -16,7 +15,8 @@ export default function ProductGridClient({ products, countryCode }: ProductGrid
     const uniqueCats = new Set<string>();
     
     products.forEach(p => {
-      const catName = p.category_name || 'Otros';
+      // ⚡ FIX: Búsqueda profunda de la categoría por si viene anidada en la base de datos
+      const catName = p.category_name || (p.category && p.category.name) || (typeof p.category === 'string' ? p.category : null) || 'Otros';
       uniqueCats.add(catName);
     });
     
@@ -25,7 +25,10 @@ export default function ProductGridClient({ products, countryCode }: ProductGrid
 
   const filteredProducts = useMemo(() => {
     if (selectedCategory === 'Todos') return products;
-    return products.filter(p => (p.category_name || 'Otros') === selectedCategory);
+    return products.filter(p => {
+      const catName = p.category_name || (p.category && p.category.name) || (typeof p.category === 'string' ? p.category : null) || 'Otros';
+      return catName === selectedCategory;
+    });
   }, [products, selectedCategory]);
 
   if (!products || products.length === 0) return (
@@ -37,12 +40,11 @@ export default function ProductGridClient({ products, countryCode }: ProductGrid
   return (
     <div className="space-y-6 md:space-y-8">
       
-      {/* --- NAVEGACIÓN DE CATEGORÍAS TIPO BURBUJA (Estilo App Nativa) --- */}
+      {/* --- NAVEGACIÓN DE CATEGORÍAS TIPO BURBUJA --- */}
       {categories.length > 1 && (
         <div className="flex gap-4 md:gap-8 overflow-x-auto pb-4 pt-2 snap-x scroll-smooth [&::-webkit-scrollbar]:hidden">
           {categories.map((cat) => {
             const isSelected = selectedCategory === cat;
-            // Usamos las primeras dos letras como "Icono" si es una categoría larga
             const shortName = cat === 'Todos' ? 'ALL' : cat.substring(0, 2).toUpperCase();
 
             return (
@@ -51,7 +53,6 @@ export default function ProductGridClient({ products, countryCode }: ProductGrid
                 onClick={() => setSelectedCategory(cat)}
                 className="flex flex-col items-center gap-2 flex-shrink-0 snap-start group outline-none"
               >
-                {/* Círculo de la categoría */}
                 <div className={`w-14 h-14 md:w-16 md:h-16 rounded-full flex items-center justify-center border-2 transition-all duration-300 shadow-lg 
                   ${isSelected 
                     ? 'border-violet-500 bg-gradient-to-br from-violet-600 to-fuchsia-600 shadow-violet-900/50 scale-110' 
@@ -62,7 +63,6 @@ export default function ProductGridClient({ products, countryCode }: ProductGrid
                     {shortName}
                   </span>
                 </div>
-                {/* Nombre de la categoría */}
                 <span className={`text-[9px] md:text-[10px] font-bold uppercase tracking-wider max-w-[70px] truncate text-center transition-colors
                   ${isSelected ? 'text-violet-400' : 'text-slate-500 group-hover:text-slate-300'}`}
                 >
@@ -74,7 +74,7 @@ export default function ProductGridClient({ products, countryCode }: ProductGrid
         </div>
       )}
 
-      {/* --- GRILLA DE PRODUCTOS (Aumentamos densidad visual reduciendo gaps) --- */}
+      {/* --- GRILLA DE PRODUCTOS --- */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2 md:gap-4">
         {filteredProducts.map((product) => (
           <ProductCard key={product.id} product={product} />

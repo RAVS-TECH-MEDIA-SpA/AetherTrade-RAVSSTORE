@@ -1,4 +1,3 @@
-// src/components/ui/ProductCard.tsx
 'use client';
 
 import Link from 'next/link';
@@ -9,13 +8,27 @@ interface ProductCardProps {
   product: any;
 }
 
+// ⚡ NUEVO: Función para redondeo psicológico de retail (ej. 7081 -> 7090)
+const getPsychologicalPrice = (price: number) => {
+  if (!price) return 0;
+  // Redondea a la centena superior y resta 10 pesos
+  return Math.ceil(price / 100) * 100 - 10;
+};
+
 export default function ProductCard({ product }: ProductCardProps) {
   const aliId = product.aliexpress_id || product.id;
   const addItem = useCartStore((state) => state.addItem);
   
-  const currentPrice = product.suggested_price_local;
-  // Simulamos un precio anterior un 40% más caro si no viene en la BD para generar urgencia
-  const oldPrice = product.compare_at_price || (currentPrice * 1.4); 
+  // ⚡ NUEVO: Precios redondeados y descuento dinámico
+  const basePrice = Number(product.suggested_price_local) || 0;
+  const currentPrice = getPsychologicalPrice(basePrice);
+  
+  // Si no hay precio de comparación en BD, simulamos uno 45% más alto
+  const rawOldPrice = product.compare_at_price ? Number(product.compare_at_price) : (basePrice * 1.45); 
+  const oldPrice = getPsychologicalPrice(rawOldPrice);
+
+  // Cálculo matemático del porcentaje real de descuento
+  const discountPercent = Math.round(((oldPrice - currentPrice) / oldPrice) * 100);
 
   const formattedPrice = new Intl.NumberFormat('es-CL', {
     style: 'currency', currency: 'CLP'
@@ -26,17 +39,15 @@ export default function ProductCard({ product }: ProductCardProps) {
   }).format(oldPrice);
 
   // Función para agregar al carrito sin salir de la página
- // Función para agregar al carrito sin salir de la página
   const handleQuickAdd = (e: React.MouseEvent) => {
     e.preventDefault(); // Evita que el click se propague si estuviera dentro de un link
     
-    // Adaptamos el producto al formato exacto que espera tu Zustand store
     addItem({
-      id: String(aliId), // Aseguramos que sea string
-      productId: String(aliId), // Requerido por tu interfaz
+      id: String(aliId), 
+      productId: String(aliId), 
       title: product.marketing_copy?.title_localized || product.title_original,
-      price: currentPrice,
-      imageUrl: product.image_url, // Corregido de 'image' a 'imageUrl'
+      price: currentPrice, // Enviamos el precio redondeado al carrito
+      imageUrl: product.image_url, 
       quantity: 1,
     });
   };
@@ -44,12 +55,14 @@ export default function ProductCard({ product }: ProductCardProps) {
   return (
     <div className="group flex flex-col bg-slate-900 border border-slate-800 hover:border-violet-500 rounded-xl overflow-hidden transition-all duration-200 hover:shadow-xl hover:shadow-violet-900/20 h-full relative">
       
-      {/* BADGES (Etiquetas superpuestas) */}
-      <div className="absolute top-2 left-2 z-10 flex flex-col gap-1">
-        <span className="bg-rose-600 text-white text-[8px] md:text-[9px] font-black px-2 py-1 rounded-sm uppercase tracking-widest shadow-sm">
-          -28% Dto
-        </span>
-      </div>
+      {/* ⚡ NUEVO: BADGE DE DESCUENTO DINÁMICO */}
+      {discountPercent > 0 && (
+        <div className="absolute top-2 left-2 z-10 flex flex-col gap-1">
+          <span className="bg-rose-600 text-white text-[8px] md:text-[9px] font-black px-2 py-1 rounded-sm uppercase tracking-widest shadow-sm">
+            -{discountPercent}% DTO
+          </span>
+        </div>
+      )}
 
       {/* ZONA CLICABLE HACIA EL PRODUCTO */}
       <Link href={`/products/${aliId}`} className="flex flex-col flex-1">
@@ -97,7 +110,7 @@ export default function ProductCard({ product }: ProductCardProps) {
         </div>
       </Link>
 
-      {/* ZONA DE ACCIÓN: Botón Quick Add (Fuera del Link para evitar errores de hidratación/navegación) */}
+      {/* ZONA DE ACCIÓN: Botón Quick Add */}
       <div className="px-2 pb-2 md:px-3 md:pb-3 mt-1">
         <button 
           onClick={handleQuickAdd}

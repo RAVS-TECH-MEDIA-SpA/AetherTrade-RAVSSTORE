@@ -4,14 +4,14 @@ export const GLOBAL_MARKUP = 1.8;
 
 export const MARKET_CONFIG = {
   CL: {
-    MIN_PRICE: 1.5,
-    MIN_SALES: 15,          // Bajamos de 35 para captar productos nuevos con potencial
-    MAX_SHIPPING: 18.0,     // Aumentamos el límite de envío para absorber costos de AliExpress
-    MAX_PRICE: 55.00,       // Subimos el techo para permitir productos de ticket medio
-    MIN_RATING: 3.8,        // Más flexible con la validación social (antes 4.0)
-    LAST_MILE_BUFFER: 2.80, // Mantenemos el costo estimado de entrega local
-    SAFETY_MARGIN: 2.00     // Margen neto mínimo reducido para evitar el bloqueo del CFO
-},
+    MIN_PRICE: 1.0,
+    MIN_SALES: 5,         // Bajado drásticamente a 5 para atrapar productos nuevos sin historial masivo
+    MAX_SHIPPING: 25.0,   // Margen holgado por si AliExpress infla el costo de envío aéreo
+    MAX_PRICE: 70.00,     // Techo más alto para captar tecnología de mayor valor
+    MIN_RATING: 3.0,      // Muy flexible con las valoraciones para pruebas
+    LAST_MILE_BUFFER: 2.80, 
+    SAFETY_MARGIN: 3.50   // Margen mínimo reducido al límite para evitar bloqueos del CFO
+  },
   // Para escalar, solo añades más códigos de país aquí
   MX: {
     MIN_PRICE: 1.50,
