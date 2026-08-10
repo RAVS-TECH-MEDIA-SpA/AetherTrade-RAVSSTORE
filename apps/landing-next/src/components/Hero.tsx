@@ -24,7 +24,7 @@ export const Hero = () => {
             </span>
           </h1>
           <p className="text-slate-400 text-lg max-w-2xl mx-auto mb-10">
-            En Ravstore no vendemos de todo. Vendemos lo que el mundo está comprando hoy, 
+            En RavsStore no vendemos de todo. Vendemos lo que el mundo está comprando hoy, 
             analizado y curado por nuestra IA para garantizarte la mejor calidad.
           </p>
           <div className="flex flex-col md:flex-row gap-4 justify-center">

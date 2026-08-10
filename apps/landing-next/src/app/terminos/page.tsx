@@ -4,7 +4,7 @@ import { Metadata } from 'next';
 
 export const metadata: Metadata = {
   title: 'Términos y Condiciones',
-  description: 'Conoce el marco legal, términos de servicio y condiciones de uso de Ravstore Chile.',
+  description: 'Conoce el marco legal, términos de servicio y condiciones de uso de RavsStore Chile.',
   robots: 'index, follow'
 };
 
@@ -21,7 +21,7 @@ export default function TermsPage() {
               Términos y <span className="text-violet-500">Condiciones</span>
             </h1>
             <p className="text-slate-500 uppercase text-[10px] font-black tracking-widest mt-4">
-              Última actualización: Mayo 2026 • Ravstore Global System
+              Última actualización: Mayo 2026 • RavsStore Global System
             </p>
           </header>
 
@@ -29,7 +29,7 @@ export default function TermsPage() {
             <div>
               <h2 className="text-white text-2xl font-bold italic uppercase">1. Alcance Global y Local</h2>
               <p>
-                Ravstore opera como una plataforma de arbitraje inteligente, conectando mercados globales con consumidores en Chile. 
+                RavsStore opera como una plataforma de arbitraje inteligente, conectando mercados globales con consumidores en Chile. 
                 Al acceder a nuestra plataforma, usted acepta los términos de importación y gestión logística que nuestra tecnología optimiza.
               </p>
             </div>
@@ -38,14 +38,14 @@ export default function TermsPage() {
               <h2 className="text-white text-2xl font-bold italic uppercase">2. Precios y Transparencia</h2>
               <p>
                 Los precios mostrados incluyen la gestión de importación y el valor del producto en moneda local (CLP). 
-                Ravstore se reserva el derecho de ajustar precios según la volatilidad del mercado internacional para asegurar la viabilidad de la entrega.
+                RavsStore se reserva el derecho de ajustar precios según la volatilidad del mercado internacional para asegurar la viabilidad de la entrega.
               </p>
             </div>
 
             <div>
               <h2 className="text-white text-2xl font-bold italic uppercase">3. Propiedad Intelectual</h2>
               <p>
-                El sistema de selección "Aether Engine" y todo el contenido curado por nuestra IA es propiedad exclusiva de Ravstore. 
+                El sistema de selección "Aether Engine" y todo el contenido curado por nuestra IA es propiedad exclusiva de RavsStore. 
                 Queda prohibida la reproducción total o parcial del contenido para fines comerciales externos.
               </p>
             </div>

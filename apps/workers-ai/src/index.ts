@@ -134,6 +134,6 @@ app.post('/analyze', async (req, res) => {
 
 // ⚡ FIX CLOUD RUN: 0.0.0.0 es crítico para que Google pueda inyectar el tráfico
 app.listen(Number(port), '0.0.0.0', () => {
-  console.log(`🚀 Ravstore Engine operando en puerto ${port} (Satisfaciendo a Cloud Run)`);
+  console.log(`🚀 RavsStore Engine operando en puerto ${port} (Satisfaciendo a Cloud Run)`);
   startWorkers();
 });

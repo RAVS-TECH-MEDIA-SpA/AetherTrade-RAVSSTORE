@@ -51,7 +51,8 @@ export default async function HomePage() {
     <div className="min-h-screen bg-[#020617] text-white selection:bg-violet-500/30 scroll-smooth">
       <Navbar countryCode={countryCode} />
       
-      <main className="pt-32 md:pt-36">
+      {/* ⚡ FIX: Aumentamos el padding-top (pt-40 para mobile) para darle aire bajo el Navbar */}
+      <main className="pt-40 md:pt-44">
         <section className="container mx-auto px-4 mb-8">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 md:gap-4">
             

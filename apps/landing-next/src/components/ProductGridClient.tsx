@@ -15,7 +15,7 @@ export default function ProductGridClient({ products, countryCode }: ProductGrid
     const uniqueCats = new Set<string>();
     
     products.forEach(p => {
-      // ⚡ FIX: Búsqueda profunda de la categoría por si viene anidada en la base de datos
+      // ⚡ Búsqueda profunda de la categoría
       const catName = p.category_name || (p.category && p.category.name) || (typeof p.category === 'string' ? p.category : null) || 'Otros';
       uniqueCats.add(catName);
     });
@@ -40,37 +40,33 @@ export default function ProductGridClient({ products, countryCode }: ProductGrid
   return (
     <div className="space-y-6 md:space-y-8">
       
-      {/* --- NAVEGACIÓN DE CATEGORÍAS TIPO BURBUJA --- */}
+      {/* --- NAVEGACIÓN DE CATEGORÍAS TIPO PILLS (CHIPS) --- */}
       {categories.length > 1 && (
-        <div className="flex gap-4 md:gap-8 overflow-x-auto pb-4 pt-2 snap-x scroll-smooth [&::-webkit-scrollbar]:hidden">
-          {categories.map((cat) => {
-            const isSelected = selectedCategory === cat;
-            const shortName = cat === 'Todos' ? 'ALL' : cat.substring(0, 2).toUpperCase();
+        <div className="relative w-full">
+          {/* ⚡ Fade lateral: Da una pista visual en mobile de que se puede hacer scroll */}
+          <div className="absolute right-0 top-0 bottom-4 w-12 bg-gradient-to-l from-[#020617] to-transparent z-10 pointer-events-none lg:hidden"></div>
+          
+          <div className="flex gap-3 overflow-x-auto pb-4 pt-2 snap-x scroll-smooth [&::-webkit-scrollbar]:hidden px-1">
+            {categories.map((cat) => {
+              const isSelected = selectedCategory === cat;
 
-            return (
-              <button
-                key={cat}
-                onClick={() => setSelectedCategory(cat)}
-                className="flex flex-col items-center gap-2 flex-shrink-0 snap-start group outline-none"
-              >
-                <div className={`w-14 h-14 md:w-16 md:h-16 rounded-full flex items-center justify-center border-2 transition-all duration-300 shadow-lg 
-                  ${isSelected 
-                    ? 'border-violet-500 bg-gradient-to-br from-violet-600 to-fuchsia-600 shadow-violet-900/50 scale-110' 
-                    : 'border-slate-800 bg-slate-900 group-hover:border-violet-500/50 group-hover:bg-slate-800'
-                  }`}
+              return (
+                <button
+                  key={cat}
+                  onClick={() => setSelectedCategory(cat)}
+                  className={`flex items-center justify-center px-6 py-2.5 rounded-full whitespace-nowrap snap-start border-2 transition-all duration-300 outline-none
+                    ${isSelected 
+                      ? 'border-violet-500 bg-violet-600/20 text-violet-300 shadow-lg shadow-violet-900/30 scale-[1.02]' 
+                      : 'border-slate-800 bg-slate-900/50 text-slate-400 hover:border-violet-500/30 hover:bg-slate-800 hover:text-slate-200'
+                    }`}
                 >
-                  <span className={`text-sm md:text-base font-black tracking-tighter ${isSelected ? 'text-white' : 'text-slate-400 group-hover:text-slate-200'}`}>
-                    {shortName}
+                  <span className="text-xs md:text-sm font-black uppercase tracking-wider">
+                    {cat}
                   </span>
-                </div>
-                <span className={`text-[9px] md:text-[10px] font-bold uppercase tracking-wider max-w-[70px] truncate text-center transition-colors
-                  ${isSelected ? 'text-violet-400' : 'text-slate-500 group-hover:text-slate-300'}`}
-                >
-                  {cat}
-                </span>
-              </button>
-            );
-          })}
+                </button>
+              );
+            })}
+          </div>
         </div>
       )}
 

@@ -1,9 +1,9 @@
 // src/components/Navbar.tsx
 'use client';
 
-import { Zap, ShoppingBag, Search, ShieldCheck } from 'lucide-react';
+import { Zap, ShoppingBag, Search, ShieldCheck, Loader2 } from 'lucide-react';
 import Link from 'next/link';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useCartStore } from '@/store/cartStore'; 
 import CartDrawer from './CartDrawer'; 
 
@@ -25,17 +25,63 @@ export default function Navbar({ countryCode = 'CL' }: NavbarProps) {
   const [isMounted, setIsMounted] = useState(false);
   const [isCartOpen, setIsCartOpen] = useState(false); 
 
+  // ⚡ Estados del Buscador Predictivo
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const searchRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => setIsMounted(true), []);
+
+  // ⚡ Lógica "Debounce" para el buscador
+  useEffect(() => {
+    if (searchQuery.length < 3) {
+      setSearchResults([]);
+      setShowDropdown(false);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setIsSearching(true);
+      setShowDropdown(true);
+      try {
+        // Llamaremos a un nuevo endpoint en el API Gateway
+        const API_URL = process.env.NEXT_PUBLIC_API_GATEWAY_URL || 'http://localhost:8080';
+        const res = await fetch(`${API_URL}/api/search?q=${encodeURIComponent(searchQuery)}&country=${countryCode}`);
+        
+        if (res.ok) {
+          const data = await res.json();
+          setSearchResults(data);
+        }
+      } catch (error) {
+        console.error("Error en la búsqueda:", error);
+      } finally {
+        setIsSearching(false);
+      }
+    }, 400); // Espera 400ms después de que el usuario deja de escribir
+
+    return () => clearTimeout(timer);
+  }, [searchQuery, countryCode]);
+
+  // Cerrar el dropdown al hacer click afuera
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
+        setShowDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   return (
     <>
-      {/* Añadimos backdrop-blur para un toque más premium cuando hagan scroll */}
       <nav className="fixed w-full z-50 bg-slate-950/95 backdrop-blur-md border-b border-slate-800">
         
-        {/* Contenedor principal: Usamos flex-wrap para manejar la fila extra en móvil */}
         <div className="container mx-auto px-4 py-3 md:h-20 flex flex-wrap items-center justify-between gap-y-3">
           
-          {/* 1. LOGO (Izquierda en Desktop y Móvil) */}
+          {/* 1. LOGO */}
           <Link href="/" className="flex items-center gap-2 flex-shrink-0 md:w-1/4">
             <div className="bg-violet-600 p-1.5 md:p-2 rounded-lg shadow-[0_0_15px_rgba(124,58,237,0.4)]">
               <Zap className="text-white w-4 h-4 md:w-5 md:h-5 fill-current" />
@@ -51,7 +97,7 @@ export default function Navbar({ countryCode = 'CL' }: NavbarProps) {
             </div>
           </Link>
 
-          {/* 3. ACCIONES / CARRITO (Derecha en Desktop y Móvil - Lo ponemos antes en el DOM por el flex-wrap) */}
+          {/* 3. ACCIONES / CARRITO */}
           <div className="flex items-center justify-end md:w-1/4 order-2 md:order-3">
             <button 
               onClick={() => setIsCartOpen(true)}
@@ -72,21 +118,64 @@ export default function Navbar({ countryCode = 'CL' }: NavbarProps) {
             </button>
           </div>
 
-          {/* 2. SEARCH BAR (Centro en Desktop, Fila completa abajo en Móvil) */}
-          <div className="w-full md:w-2/4 md:flex-1 order-3 md:order-2 md:px-6 relative flex">
+          {/* 2. SEARCH BAR CON DROPDOWN PREDICTIVO */}
+          <div className="w-full md:w-2/4 md:flex-1 order-3 md:order-2 md:px-6 relative flex" ref={searchRef}>
             <input 
               type="text" 
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onFocus={() => { if (searchResults.length > 0) setShowDropdown(true); }}
               placeholder="Buscar productos, gadgets virales..." 
               className="w-full bg-slate-900 border border-slate-700 focus:border-violet-500 hover:border-slate-600 text-white px-4 py-2.5 rounded-l-lg focus:outline-none transition-colors text-sm placeholder:text-slate-500 shadow-inner"
             />
             <button className="bg-violet-600 hover:bg-violet-500 px-5 md:px-8 rounded-r-lg flex items-center justify-center transition-colors shadow-lg shadow-violet-900/20">
-              <Search className="w-5 h-5 text-white" />
+              {isSearching ? <Loader2 className="w-5 h-5 text-white animate-spin" /> : <Search className="w-5 h-5 text-white" />}
             </button>
+
+            {/* ⚡ DROPDOWN DE RESULTADOS */}
+            {showDropdown && (
+              <div className="absolute top-full left-0 right-0 mt-2 mx-0 md:mx-6 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl overflow-hidden z-50">
+                {searchResults.length > 0 ? (
+                  <ul className="max-h-[60vh] overflow-y-auto [&::-webkit-scrollbar]:hidden">
+                    {searchResults.map((prod) => (
+                      <li key={prod.id} className="border-b border-slate-800 last:border-0 hover:bg-slate-800 transition-colors">
+                        <Link 
+                          href={`/products/${prod.id}`}
+                          onClick={() => {
+                            setShowDropdown(false);
+                            setSearchQuery('');
+                          }}
+                          className="flex items-center gap-4 p-3"
+                        >
+                          <div className="w-12 h-12 rounded-lg bg-white overflow-hidden flex-shrink-0">
+                            <img src={prod.image_url} alt={prod.title_original} className="w-full h-full object-cover mix-blend-multiply" />
+                          </div>
+                          <div className="flex flex-col flex-1 min-w-0">
+                            <span className="text-xs font-bold text-white truncate">
+                              {prod.marketing_copy?.title_localized || prod.title_original}
+                            </span>
+                            <span className="text-[10px] text-violet-400 font-black uppercase tracking-wider">
+                              {prod.category_name || 'Producto'}
+                            </span>
+                          </div>
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  !isSearching && searchQuery.length >= 3 && (
+                    <div className="p-6 text-center text-sm text-slate-400">
+                      No encontramos resultados para "<span className="text-white font-bold">{searchQuery}</span>"
+                    </div>
+                  )
+                )}
+              </div>
+            )}
           </div>
 
         </div>
         
-        {/* CATEGORÍAS SUB-NAV (Scrollable en móvil para fricción cero) */}
+        {/* CATEGORÍAS SUB-NAV */}
         <div className="bg-slate-900/80 border-t border-slate-800/80 overflow-x-auto [&::-webkit-scrollbar]:hidden">
           <div className="container mx-auto px-4 h-9 flex items-center gap-6 text-[10px] md:text-[11px] font-bold text-slate-400 uppercase tracking-wider min-w-max">
             <a href="#tendencias" className="hover:text-white transition-colors">{t.trends}</a>
@@ -95,7 +184,7 @@ export default function Navbar({ countryCode = 'CL' }: NavbarProps) {
               <ShieldCheck className="w-3.5 h-3.5" /> {t.warranty}
             </a>
             <span className="text-violet-400 flex items-center gap-1 ml-auto">
-              <Zap className="w-3.5 h-3.5 fill-current" /> Envíos Gratis a {countryCode}
+              <Zap className="w-3.5 h-3.5 fill-current" /> Envíos Gratis a Chile
             </span>
           </div>
         </div>

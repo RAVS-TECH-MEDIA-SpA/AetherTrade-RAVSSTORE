@@ -5,23 +5,23 @@ import MetaPixelInit from '@/components/MetaPixelInit';
 
 export const metadata: Metadata = {
   title: {
-    default: 'Ravstore | Gadgets Premium e Importación Directa en Chile',
-    template: '%s | Ravstore'
+    default: 'RavsStore | Gadgets Premium e Importación Directa en Chile',
+    template: '%s | RavsStore'
   },
   description: 'Descubre las últimas tendencias tecnológicas globales con envío gratis a todo Chile. Calidad verificada por IA y respaldo local en la Región del Biobío.',
   keywords: ['tecnología chile', 'gadgets virales', 'importación directa', 'compras seguras webpay', 'tienda tech biobio', 'despacho gratis'],
-  authors: [{ name: 'Ravstore Team' }],
-  creator: 'Ravstore',
+  authors: [{ name: 'RavsStore Team' }],
+  creator: 'RavsStore',
   openGraph: {
     type: 'website',
     locale: 'es_CL',
     url: 'https://ravsstore.com',
-    siteName: 'Ravstore',
+    siteName: 'RavsStore',
     images: [{
       url: '/og-image.jpg',
       width: 1200,
       height: 630,
-      alt: 'Ravstore - Lo mejor del mundo en Chile'
+      alt: 'RavsStore - Lo mejor del mundo en Chile'
     }],
   },
   robots: {
@@ -42,12 +42,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             __html: JSON.stringify({
               "@context": "https://schema.org",
               "@type": "OnlineStore",
-              "name": "Ravstore",
+              "name": "RavsStore",
               "description": "Tienda de arbitraje inteligente y tecnología premium.",
               "url": "https://ravsstore.com",
               "address": {
                 "@type": "PostalAddress",
-                "addressLocality": "Cabrero",
+                "addressLocality": "Concepción",
                 "addressRegion": "Biobío",
                 "addressCountry": "CL"
               }

@@ -4,7 +4,7 @@ import { PubSub } from '@google-cloud/pubsub';
 // NOTA: Debes copiar estos archivos desde workers-ai a tu carpeta del gateway
 import { GeminiService } from '../services/gemini.service.js'; 
 
-import { findByAliExpressId } from '../products/products.service.js';
+import { findByAliExpressId, searchProducts } from '../products/products.service.js';
 import { syncVariantsFromRaw } from '../products/product-sync.service.js';
 
 export const pubsub = new PubSub({
@@ -147,15 +147,17 @@ export const getDashboardStats = async (req: Request, res: Response) => {
 /**
  * Inventario con JOINS para resolver el problema del VAT y rate_to_usd
  * UPDATE: Se agrega subquery JSON_AGG para incluir las variantes en el payload de la portada.
+ * UPDATE 2: Se integra LEFT JOIN de 'categories' para exponer 'category_name' y alimentar el selector de la landing.
  */
 export const getInventory = async (req: Request, res: Response) => {
   try {
     const { status, country } = req.query;
     
-    // Mejorado con LEFT JOIN para traer reglas fiscales, de cambio Y las VARIANTES (JSON_AGG)
+    // Mejorado con LEFT JOIN para traer reglas fiscales, de cambio, nombres de categorías Y las VARIANTES (JSON_AGG)
     let query = `
       SELECT 
         p.*, 
+        c.name as category_name,
         t.vat_rate, 
         er.rate_to_usd,
         (
@@ -164,6 +166,7 @@ export const getInventory = async (req: Request, res: Response) => {
           WHERE v.product_id = p.id
         ) as variants
       FROM products p
+      LEFT JOIN categories c ON p.category_id = c.id
       LEFT JOIN tax_rules t ON p.target_country = t.country_code
       LEFT JOIN exchange_rates er ON t.currency_code = er.currency_code
       WHERE 1=1
@@ -279,6 +282,24 @@ export const updateProduct = async (req: Request, res: Response) => {
   }
 };
 
+/**
+ * Controlador para la búsqueda predictiva del Navbar
+ */
+export const searchProductsHandler = async (req: Request, res: Response) => {
+  try {
+    const { q, country } = req.query;
+    
+    if (!q || typeof q !== 'string' || q.length < 3) {
+      return res.json([]); // Retornamos array vacío si la query es muy corta
+    }
+
+    const results = await searchProducts(q, country as string);
+    res.json(results);
+  } catch (error: any) {
+    console.error('🚨 Error en la búsqueda predictiva:', error);
+    res.status(500).json({ error: 'Error en la búsqueda' });
+  }
+};
 /**
  * Trigger al Worker AI con Solución de Bucle de Ráfaga y Generación Centralizada
  */

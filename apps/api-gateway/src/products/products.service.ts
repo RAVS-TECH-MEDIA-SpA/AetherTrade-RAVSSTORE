@@ -49,3 +49,37 @@ export const findAllWinners = async (country?: string) => {
   const res = await pool.query(query, values);
   return res.rows;
 };
+
+/**
+ * Buscador predictivo de productos (Para el Navbar)
+ */
+export const searchProducts = async (queryStr: string, country?: string) => {
+  // Buscamos coincidencias en el título original, en el título localizado (marketing_copy) o en la categoría
+  const query = `
+    SELECT 
+      p.id, 
+      p.aliexpress_id,
+      p.title_original, 
+      p.image_url, 
+      p.marketing_copy,
+      c.name as category_name
+    FROM products p
+    LEFT JOIN categories c ON p.category_id = c.id
+    WHERE p.status = 'WINNER'
+    AND (
+      p.title_original ILIKE $1 
+      OR p.marketing_copy->>'title_localized' ILIKE $1
+      OR c.name ILIKE $1
+    )
+    ${country ? 'AND p.target_country = $2' : ''}
+    ORDER BY p.created_at DESC
+    LIMIT 6;
+  `;
+  
+  // Agregamos los comodines % para buscar la palabra en cualquier parte del texto
+  const searchTerm = `%${queryStr}%`;
+  const values = country ? [searchTerm, country] : [searchTerm];
+  
+  const res = await pool.query(query, values);
+  return res.rows;
+};

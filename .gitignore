@@ -16,8 +16,7 @@ out/
 .cache/
 .tsbuildinfo
 
-# 3. SCRIPTS Y TEMPORALES DE WORKERS (Específicos para apps/workers-ai)
-# Si tus scripts generan archivos .js desde .ts en la raíz de src, o logs pesados:
+# 3. SCRIPTS Y TEMPORALES DE WORKERS
 apps/workers-ai/*.js
 apps/workers-ai/temp/
 apps/workers-ai/output/
@@ -28,7 +27,6 @@ yarn-debug.log*
 yarn-error.log*
 
 # 4. SECRETOS Y CONFIGURACIONES (¡CRÍTICO!)
-# Nunca, bajo ninguna circunstancia, se suben estos
 .env
 .env.local
 .env.production
@@ -38,11 +36,18 @@ yarn-error.log*
 *.key
 
 # 5. INFRAESTRUCTURA Y BASE DE DATOS LOCAL
-# Ignoramos la data del volumen de Docker para que no subas gigas de Postgres
 infrastructure/db/data/
 docker/volumes/
 
-# 6. ARCHIVOS DE SISTEMA Y EDITORES
+# 6. ARCHIVOS DE SQL Y VOLCADOS (Dumps de BD)
+*.sql
+*.dump
+
+# 7. ARCHIVOS TEMPORALES Y DE NOTAS
+Untitled-*.md
+*.tmp
+
+# 8. ARCHIVOS DE SISTEMA Y EDITORES
 .DS_Store
 .DS_Store?
 ._*
@@ -50,19 +55,17 @@ Thumbs.db
 ehthumbs.db
 Desktop.ini
 
-# IDEs (Opcional, pero recomendado para Senior)
+# IDEs
 .vscode/
 .idea/
 *.sublime-project
 *.sublime-workspace
 
-# 7. TESTING
+# 9. TESTING
 coverage/
 .nyc_output/
 
-# 8. CREDENCIALES GCP
-# Ignoramos las credenciales de Google Cloud para que no se suban al repositorio
+# 10. CREDENCIALES GCP Y OTROS
 secrets/
-
 env.yaml
 apikey.txt

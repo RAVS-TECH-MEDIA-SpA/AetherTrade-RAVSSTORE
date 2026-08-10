@@ -5,7 +5,7 @@ import { ShieldCheck } from 'lucide-react';
 
 export const metadata: Metadata = {
   title: 'Privacidad y Datos',
-  description: 'Cómo protegemos tu información y garantizamos transacciones seguras en Ravstore.',
+  description: 'Cómo protegemos tu información y garantizamos transacciones seguras en RavsStore.',
 };
 
 export default function PrivacyPage() {
@@ -27,7 +27,7 @@ export default function PrivacyPage() {
             <div className="space-y-8 text-slate-400">
               <h2 className="text-white font-black uppercase text-sm tracking-widest border-l-4 border-violet-600 pl-4">Protección de Datos</h2>
               <p>
-                En Ravstore, no vendemos tu información. Utilizamos encriptación de grado militar para procesar tus pedidos 
+                En RavsStore, no vendemos tu información. Utilizamos encriptación de grado militar para procesar tus pedidos 
                 y asegurar que tu experiencia de compra global sea 100% privada.
               </p>
 

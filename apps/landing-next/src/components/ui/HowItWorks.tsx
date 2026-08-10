@@ -9,7 +9,7 @@ const steps = [
   {
     icon: <Globe className="w-8 h-8" />,
     title: "Importación Directa",
-    desc: "Sin intermediarios. Ravstore gestiona la logística internacional para garantizar tecnología de punta a precios de origen."
+    desc: "Sin intermediarios. RavsStore gestiona la logística internacional para garantizar tecnología de punta a precios de origen."
   },
   {
     icon: <Truck className="w-8 h-8" />,
@@ -25,7 +25,7 @@ export const HowItWorks = () => (
         <h2 className="text-4xl lg:text-6xl font-black text-white italic uppercase tracking-tighter mb-4">
           Tecnología <span className="text-violet-500">Sin Fronteras</span>
         </h2>
-        <p className="text-slate-500 font-bold tracking-widest uppercase text-[10px]">El estándar Ravstore para el mundo</p>
+        <p className="text-slate-500 font-bold tracking-widest uppercase text-[10px]">El estándar RavsStore para el mundo</p>
       </div>
 
       <div className="grid md:grid-cols-3 gap-12">

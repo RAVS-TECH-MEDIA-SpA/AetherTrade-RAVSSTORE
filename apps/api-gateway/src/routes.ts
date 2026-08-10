@@ -4,11 +4,12 @@ import {
   getInventory, 
   getProductById, 
   updateProduct,
-  triggerAnalysis 
+  triggerAnalysis,
+  searchProductsHandler // <-- NUEVA IMPORTACIÓN
 } from './controllers/dashboard.controller.js';
 import { handleCheckout } from './controllers/checkoutController.js';
 import { handleMPWebhook } from './webhooks/webhook.controller.js';
-import { createOrder } from './controllers/orders.controller.js'; // <-- NUEVA IMPORTACIÓN
+import { createOrder } from './controllers/orders.controller.js'; 
 import { generateFacebookFeed } from './controllers/feed.controller.js';
 
 const router = Router();
@@ -26,15 +27,18 @@ router.get('/inventory', getInventory);
 // Detalle individual y Actualización del Master Editor
 // Se utiliza /inventory/:id para coincidir con la llamada del frontend y evitar Error 404
 router.get('/inventory/:id', getProductById);
-router.put('/inventory/:id', updateProduct); // <-- SOLUCIÓN AL ERROR 404 DEL PUT
+router.put('/inventory/:id', updateProduct); 
 
 // Ruta alternativa para productos (Mantenida por compatibilidad si es necesario)
 router.get('/products/:id', getProductById);
 
+// ⚡ NUEVA RUTA PARA EL BUSCADOR PREDICTIVO DEL NAVBAR ⚡
+router.get('/search', searchProductsHandler);
+
 // Trigger manual para forzar análisis de un nicho vía Pub/Sub
 router.post('/analyze', triggerAnalysis);
 
-// <-- NUEVA RUTA PARA GUARDAR LA ORDEN ANTES DEL PAGO -->
+// Ruta para guardar la orden antes del pago
 router.post('/orders', createOrder);
 
 router.post('/checkout', handleCheckout);
