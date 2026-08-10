@@ -1,17 +1,42 @@
-# Stage 1: Build
-FROM node:20-alpine AS builder
+FROM node:20-alpine AS base
+
+# 1. Instalar dependencias necesarias
+FROM base AS deps
+RUN apk add --no-cache libc6-compat
 WORKDIR /app
+
+# Copiar manifiestos del monorepo y de la landing
 COPY package*.json ./
-RUN npm install
+COPY apps/landing-next/package.json ./apps/landing-next/
+RUN npm ci
+
+# 2. Compilar la aplicación Next.js
+FROM base AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+WORKDIR /app/apps/landing-next
+ENV NEXT_TELEMETRY_DISABLED 1
 RUN npm run build
 
-# Stage 2: Run
-FROM node:20-alpine
+# 3. Imagen de producción (Runner)
+FROM base AS runner
 WORKDIR /app
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/package*.json ./
+ENV NODE_ENV production
+ENV NEXT_TELEMETRY_DISABLED 1
 
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 nextjs
+
+# Copiar los artefactos standalone generados por Next.js
+COPY --from=builder /app/apps/landing-next/public ./apps/landing-next/public
+COPY --from=builder --chown=nextjs:nodejs /app/apps/landing-next/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/apps/landing-next/.next/static ./apps/landing-next/.next/static
+
+USER nextjs
 EXPOSE 3000
-CMD ["node", "dist/server.js"]
+ENV PORT 3000
+ENV HOSTNAME "0.0.0.0"
+
+# Next.js standalone genera un server.js. Este CMD es a prueba de errores de ruta en monorepos:
+CMD ["sh", "-c", "if [ -f server.js ]; then node server.js; else node apps/landing-next/server.js; fi"]

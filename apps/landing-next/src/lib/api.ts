@@ -1,5 +1,10 @@
 // src/lib/api.ts
-const API_URL = process.env.NEXT_PUBLIC_API_GATEWAY_URL || 'http://localhost:8080';
+// const API_URL = process.env.NEXT_PUBLIC_API_GATEWAY_URL || 'http://localhost:8080';
+export const API_URL = 
+  process.env.NEXT_PUBLIC_API_GATEWAY_URL || 
+  (process.env.NODE_ENV === 'production' 
+    ? 'https://aethertrade-gateway-126152513656.southamerica-west1.run.app' 
+    : 'http://localhost:8080');
 
 export function processProductPricing(product: any) {
   if (!product) return null;

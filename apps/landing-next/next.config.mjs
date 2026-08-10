@@ -1,4 +1,6 @@
+/** @type {import('next').NextConfig} */
 const nextConfig = {
+  output: 'standalone',
   images: {
     remotePatterns: [
       { protocol: 'https', hostname: 'storage.googleapis.com' },
@@ -10,4 +12,6 @@ const nextConfig = {
       // Si ves errores de host específico, agrégalos aquí.
     ],
   },
-}
+};
+
+export default nextConfig;

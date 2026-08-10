@@ -3,6 +3,10 @@ node_modules/
 dist/
 build/
 .git
-# Ignorar node_modules de las apps también
+# Ignorar node_modules de las apps y libs
 apps/*/node_modules/
 libs/*/node_modules/
+
+# Ignorar directorios de compilación y caché de Next.js
+.next/
+apps/landing-next/.next/

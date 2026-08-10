@@ -47,8 +47,7 @@ export default function Navbar({ countryCode = 'CL' }: NavbarProps) {
       setShowDropdown(true);
       try {
         // Llamaremos a un nuevo endpoint en el API Gateway
-        const API_URL = process.env.NEXT_PUBLIC_API_GATEWAY_URL || 'http://localhost:8080';
-        const res = await fetch(`${API_URL}/api/search?q=${encodeURIComponent(searchQuery)}&country=${countryCode}`);
+       const res = await fetch(`/api/search?q=${encodeURIComponent(searchQuery)}&country=${countryCode}`);
         
         if (res.ok) {
           const data = await res.json();
