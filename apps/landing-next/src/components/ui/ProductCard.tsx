@@ -1,4 +1,3 @@
-// src/components/ui/ProductCard.tsx
 'use client';
 
 import Link from 'next/link';
@@ -10,12 +9,16 @@ interface ProductCardProps {
 }
 
 export default function ProductCard({ product }: ProductCardProps) {
-  // ⚡ FIX: Forzamos a que el sistema use única y exclusivamente el UUID seguro
   const internalId = product.id;
   
+  // ⚡ Lógica de rescate de imágenes de Google Cloud
+  const cloudImages = Array.isArray(product.local_images) 
+    ? product.local_images.filter((img: string) => img && img.trim() !== '') 
+    : [];
+  const displayImage = cloudImages.length > 0 ? cloudImages[0] : product.image_url;
+
   const addItem = useCartStore((state) => state.addItem);
   
-  // ⚡ Cero lógica inventada. Leemos 100% de lo que entregó el servidor.
   const currentPrice = product.calculated_min_price ?? 0;
   const oldPrice = product.calculated_old_price ?? 0;
   const discountPercent = product.calculated_discount_percent ?? 0;
@@ -35,7 +38,7 @@ export default function ProductCard({ product }: ProductCardProps) {
       productId: String(internalId), 
       title: product.marketing_copy?.title_localized || product.title_original,
       price: currentPrice, 
-      imageUrl: product.image_url, 
+      imageUrl: displayImage, 
       quantity: 1,
     });
   };
@@ -43,7 +46,6 @@ export default function ProductCard({ product }: ProductCardProps) {
   return (
     <div className="group flex flex-col bg-slate-900 border border-slate-800 hover:border-violet-500 rounded-xl overflow-hidden transition-all duration-200 hover:shadow-xl hover:shadow-violet-900/20 h-full relative">
       
-      {/* ⚡ BADGE DE DESCUENTO DINÁMICO REAL (Solo si es mayor a 0) */}
       {discountPercent > 0 && (
         <div className="absolute top-2 left-2 z-10 flex flex-col gap-1">
           <span className="bg-rose-600 text-white text-[8px] md:text-[9px] font-black px-2 py-1 rounded-sm uppercase tracking-widest shadow-sm">
@@ -52,11 +54,10 @@ export default function ProductCard({ product }: ProductCardProps) {
         </div>
       )}
 
-      {/* ⚡ FIX: El enlace ahora apunta a /products/UUID-seguro */}
       <Link href={`/products/${internalId}`} className="flex flex-col flex-1">
         <div className="aspect-square w-full bg-white relative p-2 flex items-center justify-center overflow-hidden">
           <img
-            src={product.image_url}
+            src={displayImage}
             alt={product.title_original}
             className="object-contain w-full h-full mix-blend-multiply group-hover:scale-110 transition-transform duration-500 ease-out"
             loading="lazy"
@@ -82,7 +83,6 @@ export default function ProductCard({ product }: ProductCardProps) {
           </div>
 
           <div className="mt-0.5 flex flex-col">
-            {/* Solo mostramos el precio tachado si es mayor a 0 */}
             {oldPrice > 0 && (
               <span className="text-slate-500 text-[10px] line-through decoration-rose-500/50 decoration-2">
                 {formattedOldPrice}

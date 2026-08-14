@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server';
 import { MercadoPagoConfig, Preference } from 'mercadopago';
-import { processProductPricing } from '@/lib/api'; // ⚡ Importamos nuestro motor de precios
+import { processProductPricing } from '@/lib/api'; 
+
+const client = new MercadoPagoConfig({ 
+  accessToken: process.env.MP_ACCESS_TOKEN || '' 
+});
 
 export async function GET(
   request: Request,
@@ -14,16 +18,12 @@ export async function GET(
     if (!res.ok) return NextResponse.json({ error: 'Producto no encontrado' }, { status: 404 });
     
     let data = await res.json();
-    data = processProductPricing(data); // ⚡ Aseguramos que la ruta GET también responda con la data masticada
+    data = processProductPricing(data); 
     return NextResponse.json(data);
   } catch (error) {
     return NextResponse.json({ error: 'Error de conexión con API Gateway' }, { status: 500 });
   }
 }
-
-const client = new MercadoPagoConfig({ 
-  accessToken: process.env.MP_ACCESS_TOKEN || '' 
-});
 
 export async function POST(
   request: Request, 
@@ -32,8 +32,8 @@ export async function POST(
   try {
     const { id } = await params;
     
-    // ⚡ AÑADIDO: Capturamos el variantId que ahora nos enviará el carrito
-    const { quantity, customerInfo, shippingAddress, variantId } = await request.json();
+    // ⚡ Capturamos todos los datos que envía el frontend (incluyendo variantId y tracking de Meta)
+    const { quantity, customerInfo, shippingAddress, variantId, fbc, fbp } = await request.json();
     const API_URL = process.env.API_GATEWAY_URL;
 
     if (!quantity || quantity < 1 || !shippingAddress) {
@@ -45,15 +45,13 @@ export async function POST(
       return NextResponse.json({ error: 'Producto no encontrado' }, { status: 404 });
     }
     
-    // ⚡ Procesamos el producto con la MISMA fórmula de la landing
     let product = await resProduct.json();
     product = processProductPricing(product);
 
     let productName = product.marketing_copy?.title_localized || product.title_original;
-    
-    // ⚡ FIX GRAVE DE MERCADOPAGO: Asignamos el precio correcto dependiendo de la variante
     let finalUnitPrice = product.calculated_min_price; 
 
+    // Seleccionamos el precio y título correcto si el producto tiene variante
     if (variantId && product.variants) {
         const selectedVariant = product.variants.find((v: any) => v.ali_sku_id === variantId || v.id === variantId);
         if (selectedVariant) {
@@ -65,22 +63,43 @@ export async function POST(
     const country = product.target_country; 
     const currency = country === 'CL' ? 'CLP' : (country === 'MX' ? 'MXN' : 'BRL');
 
+    // ============================================================================
+    // ⚡ LLAMADA AL API GATEWAY CON EL FORMATO ESTÁNDAR QUE ESPERA EL BACKEND
+    // ============================================================================
+    const clientUserAgent = request.headers.get('user-agent') || '';
+    const eventSourceUrl = request.headers.get('referer') || '';
+
     const orderRes = await fetch(`${API_URL}/api/orders`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        product_id: product.id,
-        quantity: Number(quantity),
-        customer_email: customerInfo.email,
-        customer_name: customerInfo.name,
-        shipping_address: shippingAddress, 
-        status: 'PENDING_PAYMENT'
+        items: [
+          {
+            productId: product.id, // ⚡ Enviamos el UUID real de la base de datos
+            variantId: variantId || null, // ⚡ Enviamos la variante seleccionada
+            title: productName,
+            quantity: Number(quantity),
+            price: finalUnitPrice
+          }
+        ],
+        customer: {
+          email: customerInfo.email,
+          firstName: customerInfo.name?.split(' ')[0] || customerInfo.name,
+          lastName: customerInfo.name?.split(' ').slice(1).join(' ') || 'Cliente',
+          phone: customerInfo.phone || null
+        },
+        shippingAddress: shippingAddress,
+        fbc: fbc || null,
+        fbp: fbp || null,
+        client_user_agent: clientUserAgent,
+        event_source_url: eventSourceUrl
       })
     });
     
-    if (!orderRes.ok) throw new Error('No se pudo crear la orden pendiente');
+    if (!orderRes.ok) throw new Error('No se pudo crear la orden pendiente en el Gateway');
     const draftOrder = await orderRes.json();
 
+    // Creamos la preferencia en MercadoPago
     const preference = new Preference(client);
     const mpResponse = await preference.create({
       body: {
@@ -89,7 +108,7 @@ export async function POST(
             id: product.id,
             title: productName,
             quantity: Number(quantity),
-            unit_price: finalUnitPrice, // ⚡ Precio 100% blindado y redondeado
+            unit_price: finalUnitPrice, 
             currency_id: currency
           }
         ],

@@ -12,14 +12,20 @@ import { trackMetaEvent, generateEventId } from '@/lib/metaPixel';
 import { CheckCircle2 } from 'lucide-react';
 
 export default function ProductGalleryWrapper({ product }: any) {
+  // ⚡ Lógica de rescate de imágenes de Google Cloud
+  const cloudImages = Array.isArray(product.local_images) 
+    ? product.local_images.filter((img: string) => img && img.trim() !== '') 
+    : [];
+  
+  const defaultImage = cloudImages.length > 0 ? cloudImages[0] : product.image_url;
+
   const [selectedVariantId, setSelectedVariantId] = useState(product.variants?.[0]?.ali_sku_id || product.variants?.[0]?.id || '');
-  const [activeImage, setActiveImage] = useState(product.image_url);
+  const [activeImage, setActiveImage] = useState(defaultImage);
   const [quantity, setQuantity] = useState(1);
   const [isAdded, setIsAdded] = useState(false); 
 
   const addItem = useCartStore((state) => state.addItem);
 
-  // ⚡ Buscamos la variante seleccionada utilizando su identificador
   const variant = useMemo(() => 
     product.variants?.find((v: any) => v.ali_sku_id === selectedVariantId || v.id === selectedVariantId) || null
   , [selectedVariantId, product.variants]);
@@ -28,17 +34,17 @@ export default function ProductGalleryWrapper({ product }: any) {
     const variantImg = variant?.image_url || variant?.image;
     if (variantImg) {
       setActiveImage(variantImg);
+    } else if (cloudImages.length > 0) {
+      setActiveImage(cloudImages[0]);
     }
   }, [variant]);
 
-  // ⚡ Handler para el nuevo VariantSelector multidimensional
   const handleVariantChange = (newVariant: any) => {
     if (newVariant) {
       setSelectedVariantId(newVariant.ali_sku_id || newVariant.id);
     }
   };
 
-  // ⚡ LÓGICA ULTRA LIMPIA: Solo leemos los campos calculados seguros del servidor
   const unitPrice = variant?.calculated_price_local ?? product.calculated_min_price ?? 0;
 
   const formattedTotal = new Intl.NumberFormat('es-CL', {
@@ -65,12 +71,12 @@ export default function ProductGalleryWrapper({ product }: any) {
 
     addItem({
       id: variant ? `${product.aliexpress_id}-${variant.ali_sku_id || variant.id}` : product.aliexpress_id,
-      productId: product.aliexpress_id,
+      productId: product.id,
       variantId: variant?.ali_sku_id || variant?.id,
       title: product.marketing_copy?.title_localized || product.title_original,
       price: unitPrice, 
       quantity: quantity,
-      imageUrl: activeImage || product.image_url,
+      imageUrl: activeImage,
       color: variant?.color,
       size: variant?.size
     });
@@ -87,13 +93,10 @@ export default function ProductGalleryWrapper({ product }: any) {
         <Navbar countryCode={'CL'}  />
       </div>
 
-      {/* ⚡ AUMENTO DE PADDING TOP (pt-36 md:pt-40) PARA DARLE AIRE A LA IMAGEN */}
       <main className="max-w-7xl mx-auto px-6 pt-36 md:pt-40 pb-20">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-20 items-start">
           
-          {/* ========================================== */}
-          {/* COLUMNA IZQUIERDA: GALERÍA DE IMÁGENES      */}
-          {/* ========================================== */}
+          {/* COLUMNA IZQUIERDA: GALERÍA */}
           <div className="lg:col-span-5 space-y-6 lg:sticky lg:top-36 z-10 flex flex-col">
             <div className="aspect-square rounded-[2rem] md:rounded-[3rem] overflow-hidden bg-slate-900 border border-white/5 shadow-2xl">
               <img 
@@ -102,15 +105,26 @@ export default function ProductGalleryWrapper({ product }: any) {
                 alt="Product" 
               />
             </div>
-            {/* ⚡ LA ANTIGUA GALERÍA DE MINIATURAS FUE ELIMINADA AQUÍ */}
+            
+            {/* Si quieres mostrar miniaturas del bucket, puedes hacerlo aquí iterando cloudImages */}
+            {cloudImages.length > 1 && (
+              <div className="grid grid-cols-4 gap-3">
+                {cloudImages.map((img: string, idx: number) => (
+                   <button 
+                     key={idx}
+                     onClick={() => setActiveImage(img)}
+                     className={`aspect-square rounded-xl overflow-hidden border-2 ${activeImage === img ? 'border-violet-500' : 'border-transparent'}`}
+                   >
+                     <img src={img} className="w-full h-full object-cover" />
+                   </button>
+                ))}
+              </div>
+            )}
           </div>
 
-          {/* ========================================== */}
-          {/* COLUMNA DERECHA: INFORMACIÓN REORDENADA     */}
-          {/* ========================================== */}
+          {/* COLUMNA DERECHA */}
           <div className="lg:col-span-7 flex flex-col space-y-8 md:space-y-10">
             
-            {/* 1. TÍTULO Y CATEGORÍA */}
             <div className="space-y-4">
               <span className="bg-violet-600/10 text-violet-400 text-[9px] md:text-[10px] font-black px-3 py-1 rounded-full border border-violet-600/20 uppercase tracking-widest inline-block">
                 {product.category_name || 'Componente Especializado'}
@@ -120,7 +134,6 @@ export default function ProductGalleryWrapper({ product }: any) {
               </h1>
             </div>
 
-            {/* 2. SELECTOR DE VARIANTES */}
             {product.variants?.length > 0 && (
               <div className="bg-slate-900/40 border border-white/5 rounded-3xl p-5 md:p-6">
                 <VariantSelector 
@@ -131,7 +144,6 @@ export default function ProductGalleryWrapper({ product }: any) {
               </div>
             )}
 
-            {/* 3. CAJA DE COMPRA (PRECIO Y CARRITO) */}
             <div className="bg-slate-900/60 border border-white/5 rounded-[2rem] md:rounded-[3rem] p-6 md:p-10 space-y-6 md:space-y-8 shadow-2xl backdrop-blur-xl relative overflow-hidden">
               {marketing.hook && (
                 <div className="absolute top-0 left-0 right-0 bg-violet-600/20 border-b border-violet-500/30 px-4 md:px-6 py-2 text-center">
@@ -164,10 +176,8 @@ export default function ProductGalleryWrapper({ product }: any) {
               </button>
             </div>
 
-            {/* 4. LOGÍSTICA Y CONFIANZA */}
             <ProductTrustLogistics product={product} />
 
-            {/* 5. DESCRIPCIÓN Y BENEFICIOS (Movidos al fondo) */}
             <div className="space-y-6 pt-6 md:pt-8 border-t border-white/10">
               <h3 className="text-lg md:text-xl font-black text-white uppercase tracking-wider">Acerca del Producto</h3>
               <p className="text-slate-400 text-sm md:text-base leading-relaxed border-l-2 border-violet-600 pl-4 md:pl-6">
@@ -186,7 +196,6 @@ export default function ProductGalleryWrapper({ product }: any) {
               )}
             </div>
 
-            {/* 6. ESPECIFICACIONES TÉCNICAS */}
             <TechnicalFeatures attributes={product.raw_details?.properties || []} />
 
           </div>

@@ -35,8 +35,8 @@ export class GeminiService {
     } 
   });
 
-  // ⚡ MOTOR INTERNO DE REINTENTOS PARA VERTEX AI (EVITA CAÍDAS POR LÍMITE DE CUOTA 429)
-  private async generateContentWithRetry(prompt: string, maxRetries = 3): Promise<any> {
+  // ⚡ MOTOR INTERNO DE REINTENTOS PARA VERTEX AI (CON JITTER EXPONENCIAL)
+  private async generateContentWithRetry(prompt: string, maxRetries = 4): Promise<any> {
     let retries = 0;
     while (retries < maxRetries) {
       try {
@@ -44,15 +44,21 @@ export class GeminiService {
       } catch (error: any) {
         if (error.message && error.message.includes('429')) {
           retries++;
-          const backoffTime = retries * 15000; // 15s, 30s, 45s
-          console.warn(`⚠️ [VERTEX 429] Cuota de IA excedida. Reintento interno ${retries}/${maxRetries} en ${backoffTime / 1000}s...`);
+          
+          // Retroceso exponencial: 5s, 10s, 20s, 40s
+          const baseWait = Math.pow(2, retries) * 2500; 
+          // Jitter: añade un tiempo aleatorio entre 0 y 4 segundos para evitar estampidas
+          const jitter = Math.floor(Math.random() * 4000); 
+          const backoffTime = baseWait + jitter;
+
+          console.warn(`⚠️ [VERTEX 429] Cuota excedida. Reintento interno ${retries}/${maxRetries} en ${(backoffTime / 1000).toFixed(1)}s...`);
           await new Promise(res => setTimeout(res, backoffTime));
         } else {
-          throw error; // Si el error es distinto (ej. 500, credenciales), falla de inmediato
+          throw error; // Falla inmediata por otros errores (ej. 403, 500)
         }
       }
     }
-    throw new Error(`[VertexAI] Falló después de ${maxRetries} reintentos por límite de cuota (429).`);
+    throw new Error(`[VertexAI] Falló tras ${maxRetries} reintentos por estrangulamiento de cuota (429).`);
   }
 
   /**

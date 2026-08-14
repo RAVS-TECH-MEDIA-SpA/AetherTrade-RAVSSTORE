@@ -6,7 +6,8 @@ const client = new MercadoPagoConfig({ accessToken: process.env.MP_ACCESS_TOKEN 
 
 export class CheckoutService {
 
-  async createPreference(orderData: any) {
+  // ⚡ Agregamos trackingData para recibir IP, User-Agent, fbc y fbp desde el controller
+  async createPreference(orderData: any, trackingData: any = {}) {
     const dbClient = await pool.connect();
     
     try {
@@ -15,17 +16,17 @@ export class CheckoutService {
       const generatedOrderId = randomUUID(); 
       const totalAmount = orderData.items.reduce((sum: number, item: any) => sum + (Number(item.price) * Number(item.quantity)), 0);
 
-      // ⚡ LECTURA DE URL PARA EL RETORNO AL FRONTEND (PUERTO 3000)
+      // ⚡ LECTURA DE URL PARA EL RETORNO AL FRONTEND
       const rawUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
       const frontendUrl = rawUrl.endsWith('/') ? rawUrl.slice(0, -1) : rawUrl;
 
       // 1. Crear Preferencia en Mercado Pago
       const preference = new Preference(client);
       const mpItems = orderData.items.map((item: any) => ({
-        id: String(item.product_id || item.id), // ⚡ Corregido: lee product_id del frontend
-        title: String(item.title),
-        unit_price: parseInt(String(item.price), 10), // ⚡ FORZAMOS a que sea un número entero estricto
-        quantity: parseInt(String(item.quantity), 10), // ⚡ Forzamos cantidad también por seguridad
+        id: String(item.productId || item.product_id || item.id), // Compatibilidad universal
+        title: String(item.title).substring(0, 250),
+        unit_price: parseInt(String(item.price), 10), 
+        quantity: parseInt(String(item.quantity), 10),
         currency_id: 'CLP'
       }));
 
@@ -38,20 +39,17 @@ export class CheckoutService {
             surname: orderData.customer.lastName,
           },
           external_reference: generatedOrderId,
-          // ⚡ AÑADIMOS LAS URLS PARA QUE EL CLIENTE VUELVA A TU TIENDA TRAS PAGAR
-        // En la creación de tu preferencia en el backend
-        // ⚡ AÑADIMOS LAS URLS PARA QUE EL CLIENTE VUELVA A TU TIENDA TRAS PAGAR
           back_urls: {
             success: `${frontendUrl}/checkout/success`, 
             failure: `${frontendUrl}/checkout`,
             pending: `${frontendUrl}/checkout`
           },
           auto_return: "approved",
+          notification_url: `${process.env.API_GATEWAY_URL}/api/webhooks/mercadopago`,
         }
       });
 
       // 2. Gestionar el Cliente (Upsert en tabla 'customers')
-      // Si el email no existe, lo crea. Si existe, actualiza su nombre.
       const upsertCustomerQuery = `
         INSERT INTO customers (email, first_name, last_name, phone, is_guest)
         VALUES ($1, $2, $3, $4, true)
@@ -69,53 +67,76 @@ export class CheckoutService {
       ]);
       const customerId = customerResult.rows[0].id;
 
-      // 3. Crear la Orden (Vinculada al Cliente y a Mercado Pago)
+      // 3. Crear la Orden (⚡ FIX: USD en 0 y Guardamos la data del Meta Pixel)
       const insertOrderQuery = `
-        INSERT INTO orders (id, customer_id, mp_preference_id, status, total_amount_local, total_amount_usd)
-        VALUES ($1, $2, $3, 'PENDING_PAYMENT', $4, $4)
+        INSERT INTO orders (id, customer_id, mp_preference_id, status, total_amount_local, total_amount_usd, client_tracking_data)
+        VALUES ($1, $2, $3, 'PENDING_PAYMENT', $4, 0, $5)
       `;
       await dbClient.query(insertOrderQuery, [
         generatedOrderId, 
         customerId,
         mpResponse.id, 
-        totalAmount
+        totalAmount,
+        trackingData
       ]);
 
-     // 4. Guardar los Items de la Orden
+      // ============================================================================
+      // ⚡ 4. EL CRUCE INTELIGENTE DE IDs Y VARIANTES
+      // ============================================================================
       for (const item of orderData.items) {
-        let realProductId = String(item.productId || item.id);
-
-        // ⚡ DETECTOR DE UUID: Si no tiene formato de UUID, asumimos que es el ID de AliExpress
-        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+        let incomingId = String(item.productId || item.product_id || item.id).trim();
+        let variantId = item.variantId || item.variant_id ? String(item.variantId || item.variant_id).trim() : null;
         
-        if (!uuidRegex.test(realProductId)) {
-          // Buscamos el UUID real en tu tabla products usando el aliexpress_id
-          const productSearch = await dbClient.query(
-            'SELECT id FROM products WHERE aliexpress_id = $1 LIMIT 1',
-            [realProductId]
-          );
-          
-          if (productSearch.rows.length > 0) {
-            realProductId = productSearch.rows[0].id; // Reemplazamos por el UUID correcto
+        // Limpiamos strings de nulos de JavaScript
+        if (variantId === 'undefined' || variantId === 'null') variantId = null;
+
+        // Si el front nos mandó un ID compuesto (ej: 1005007551-120000412), lo separamos
+        if (incomingId.includes('-') && !incomingId.match(/^[0-9a-fA-F-]{36}$/)) {
+          incomingId = incomingId.split('-')[0];
+        }
+
+        let realProductId = null;
+        
+        // Expresión regular estándar para detectar UUID
+        const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(incomingId);
+
+        if (isUUID) {
+          // Si es UUID, buscamos por la columna 'id'
+          const search = await dbClient.query('SELECT id FROM products WHERE id = $1 LIMIT 1', [incomingId]);
+          if (search.rows.length > 0) {
+            realProductId = search.rows[0].id;
           } else {
-            throw new Error(`El producto con ID AliExpress ${realProductId} no existe en tu tabla 'products'.`);
+            throw new Error(`El producto con UUID ${incomingId} no existe en la base de datos.`);
+          }
+        } else {
+          // Si es un número (AliExpress ID), buscamos por 'aliexpress_id'
+          const search = await dbClient.query('SELECT id FROM products WHERE aliexpress_id = $1 LIMIT 1', [incomingId]);
+          if (search.rows.length > 0) {
+            realProductId = search.rows[0].id;
+          } else {
+            throw new Error(`Producto con AliExpress ID ${incomingId} no encontrado en la base de datos local.`);
           }
         }
 
-        // Ahora insertamos con toda seguridad
+        // ⚡ FIX: Insertamos variant_id, y seteamos unit_cost_usd en 0 para proteger las finanzas
         await dbClient.query(`
-          INSERT INTO order_items (order_id, product_id, quantity, unit_price_local, unit_cost_usd)
-          VALUES ($1, $2, $3, $4, $4)
+          INSERT INTO order_items (order_id, product_id, variant_id, quantity, unit_price_local, unit_cost_usd)
+          VALUES ($1, $2, $3, $4, $5, 0)
         `, [
           generatedOrderId,
-          realProductId, // 👈 Aquí pasamos el UUID real aceptado por Postgres
+          realProductId,
+          variantId,
           item.quantity,
-          item.price // unit_price_local
+          item.price
         ]);
       }
 
-      await dbClient.query('COMMIT'); 
-      return { preferenceId: mpResponse.id };
+     await dbClient.query('COMMIT'); 
+      // ⚡ Devolvemos el init_point para que la Landing redirija al cliente
+      return { 
+        preferenceId: mpResponse.id, 
+        init_point: mpResponse.init_point 
+      };
 
     } catch (error: any) {
       await dbClient.query('ROLLBACK'); 

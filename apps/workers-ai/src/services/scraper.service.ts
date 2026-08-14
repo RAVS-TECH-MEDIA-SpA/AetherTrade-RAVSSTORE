@@ -74,7 +74,15 @@ export class ScraperService {
 
     console.log(`🔍 [DEBUG PARSEPRICE] Entrada original: "${text}"`);
 
+    // ⚡ FIX: Nuevo filtro anti-dimensiones (ignora patrones como 123x23x62)
+    const dimensionPattern = /\d+\s*[x×X]\s*\d+\s*[x×X]?\s*\d*/;
+    if (dimensionPattern.test(text)) {
+      console.log(`🚫 [DEBUG PARSEPRICE] Descartado por contener dimensiones: "${text.substring(0, 30)}..."`);
+      return 0;
+    }
+
     // ⚡ FIX COMAS: El regex de Chile ahora admite tanto puntos (\.) como comas (,) en los miles.
+    // ⚡ FIX: Añadido requerimiento de símbolo de moneda para evitar falsos positivos
     const priceRegex = country === 'CL' 
       ? /(?:\$|CLP)\s?([0-9]{1,3}(?:[\.,][0-9]{3})+|[0-9]{3,7})/i 
       : /(?:\$|USD|€|MXN)\s?([0-9]{1,3}(?:,[0-9]{3})*(?:\.[0-9]{2})?)/i;
@@ -99,7 +107,6 @@ export class ScraperService {
     console.log(`🔍 [DEBUG PARSEPRICE] Valor convertido: ${price}`);
 
     // ⚡ FIX BUG DE MONEDAS: Usamos EXCLUSIVAMENTE el minValidPrice de este archivo (que está en moneda local).
-    // Jamás usamos MARKET_CONFIG.MIN_PRICE aquí porque eso está en dólares (USD).
     const minPrice = this.MARKET_MAP[country]?.minValidPrice || 0;
     
     if (price < minPrice) {
@@ -147,6 +154,15 @@ export class ScraperService {
       
       return allResults
         .map((item: any) => {
+          // ⚡ MEJORA: Priorizamos el precio oficial de Google Shopping si está disponible
+          if (item.price) {
+            const price = this.parsePrice(`${item.price} $`, countryCode);
+            if (price > 0) {
+              return { title: item.title, price, source: item.source || 'Shopping', link: item.link, isSynthetic: false };
+            }
+          }
+
+          // Si no, recurrimos al método original de parsear el snippet
           const rawText = `${item.price || ''} ${item.snippet || ''} ${item.title || ''}`;
           const price = this.parsePrice(rawText, countryCode);
 

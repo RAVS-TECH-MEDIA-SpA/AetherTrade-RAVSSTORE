@@ -16,35 +16,35 @@ export default function ProductModal({ productId, onClose }: ProductModalProps) 
   const [error, setError] = useState(false);
 
   const getVideoEmbedUrl = (url: string) => {
-  if (!url) return null;
+    if (!url) return null;
 
-  // 1. YouTube
-  const ytRegExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
-  const ytMatch = url.match(ytRegExp);
-  if (ytMatch && ytMatch[2].length === 11) {
-    return `https://www.youtube.com/embed/${ytMatch[2]}?autoplay=1&modestbranding=1`;
-  }
-
-  // 2. Instagram (Reels o Posts)
-  if (url.includes('instagram.com')) {
-    // Limpiamos la URL y forzamos el sufijo /embed
-    const cleanUrl = url.split('?')[0]; 
-    return `${cleanUrl}${cleanUrl.endsWith('/') ? '' : '/'}embed`;
-  }
-
-  // 3. TikTok
-  if (url.includes('tiktok.com')) {
-    // Intentamos extraer el ID del video del final de la URL
-    const tiktokIdMatch = url.match(/\/video\/(\d+)/);
-    if (tiktokIdMatch) {
-      return `https://www.tiktok.com/embed/v2/${tiktokIdMatch[1]}`;
+    // 1. YouTube
+    const ytRegExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+    const ytMatch = url.match(ytRegExp);
+    if (ytMatch && ytMatch[2].length === 11) {
+      return `https://www.youtube.com/embed/${ytMatch[2]}?autoplay=1&modestbranding=1`;
     }
-    // Si es un enlace corto o perfil, TikTok es difícil de embeber sin su script oficial
-    return null; 
-  }
 
-  return url; // Retorna tal cual si ya es un MP4 o similar
-};
+    // 2. Instagram (Reels o Posts)
+    if (url.includes('instagram.com')) {
+      // Limpiamos la URL y forzamos el sufijo /embed
+      const cleanUrl = url.split('?')[0]; 
+      return `${cleanUrl}${cleanUrl.endsWith('/') ? '' : '/'}embed`;
+    }
+
+    // 3. TikTok
+    if (url.includes('tiktok.com')) {
+      // Intentamos extraer el ID del video del final de la URL
+      const tiktokIdMatch = url.match(/\/video\/(\d+)/);
+      if (tiktokIdMatch) {
+        return `https://www.tiktok.com/embed/v2/${tiktokIdMatch[1]}`;
+      }
+      // Si es un enlace corto o perfil, TikTok es difícil de embeber sin su script oficial
+      return null; 
+    }
+
+    return url; // Retorna tal cual si ya es un MP4 o similar
+  };
 
   useEffect(() => {
     setLoading(true);
@@ -63,14 +63,35 @@ export default function ProductModal({ productId, onClose }: ProductModalProps) 
       }).catch(() => setError(true));
   }, [productId]);
 
+  // ==========================================================
+  // ⚡ FUNCIÓN PARA LEER COOKIES DE META CAPI (NO TOCAR)
+  // ==========================================================
+  const getCookie = (name: string) => {
+    if (typeof document === 'undefined') return null;
+    const value = `; ${document.cookie}`;
+    const parts = value.split(`; ${name}=`);
+    if (parts.length === 2) return parts.pop()?.split(';').shift() || null;
+    return null;
+  };
+
   const handleCheckout = async () => {
     if (checkoutLoading) return;
     setCheckoutLoading(true);
     try {
+      // ⚡ Rescatamos las cookies del Pixel de Facebook justo antes del checkout
+      const tracking = {
+        fbc: getCookie('_fbc'),
+        fbp: getCookie('_fbp')
+      };
+
       const res = await fetch(`/api/checkout/products/${productId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ quantity: 1 })
+        // ⚡ Inyectamos el tracking en el body
+        body: JSON.stringify({ 
+          quantity: 1,
+          tracking: tracking 
+        })
       });
       const result = await res.json();
       if (result.init_point) {

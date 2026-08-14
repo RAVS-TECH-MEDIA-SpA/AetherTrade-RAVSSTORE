@@ -76,8 +76,6 @@ export async function listenForCandidates() {
     if (!payload.aliexpress_id || !payload.batchId) {
       console.log(`🚜 [DISCOVERY SECUENCIAL] Iniciando búsqueda para: ${payload.niche}`);
       try {
-        // AGREGAMOS AWAIT AQUÍ. Esto impide que PubSub procese el siguiente nicho
-        // hasta que este haya terminado de consultar a RapidAPI por completo.
         await runDiscoveryTask(payload.batchId, payload.niche, payload.targetCountry, payload.eliteLimit);
       } catch (err) {
         console.error(`❌ Error en Discovery para ${payload.niche}:`, err);
@@ -85,6 +83,7 @@ export async function listenForCandidates() {
       message.ack();
       return;
     }
+    
     // Extracción segura después de pasar el escudo
     const { aliexpress_id, batchId, targetCountry } = payload;
     const targetLang = targetCountry === 'CL' ? 'Español' : 'Inglés';
@@ -96,7 +95,6 @@ export async function listenForCandidates() {
       console.log(`\n🔍 [ANALISIS PROFUNDO] ID: ${aliexpress_id} | Batch: ${batchId}`);
 
       // 1. Obtención de Data Profunda (⚡ JITTER MASIVO ANTI-BAN GEMINI)
-      // Jitter entre 10 segundos y 2 MINUTOS para esparcir los 10 productos a lo largo del tiempo
       const minJitter = 10000;
       const maxJitter = 120000; 
       const jitterDelay = Math.floor(Math.random() * (maxJitter - minJitter + 1)) + minJitter;
@@ -189,16 +187,19 @@ export async function listenForCandidates() {
       const extraImages = await serper.getLifestyleImages(lifestyleSearch);
       const combinedImages = [...detail.images.slice(0, 4), ...extraImages.slice(0, 2)];
 
-      localImages = await Promise.all(
+      const rawLocalImages = await Promise.all(
         combinedImages.slice(0, 6).map((url, i) => media.downloadAndUploadImage(url, aliexpress_id, i))
       );
+      
+      // ⚡ FIX: Limpiamos los "huecos" ("") 
+      const cleanLocalImages = rawLocalImages.filter(img => img && img.trim() !== '');
 
       // ==========================================================
       // 7. PERSISTENCIA TRANSACCIONAL (ATÓMICA)
       // ==========================================================
       await client.query('BEGIN');
 
-      // --- 7.1 CATEGORÍA (Modificado para evitar error de Slug duplicado) ---
+      // --- 7.1 CATEGORÍA ---
       let dbCategoryId = null; 
       const rawCatId = detail.category_id || (detail as any).catId; 
       
@@ -208,7 +209,6 @@ export async function listenForCandidates() {
         if (catRes.rows.length > 0) {
           dbCategoryId = catRes.rows[0].id;
         } else {
-          // Ya que RapidAPI no envía el nombre de la categoría, usamos a Gemini para inferirlo del título
           let finalCategoryName = 'Accesorios y Gadgets';
           try {
             const promptCat = `Clasifica el producto "${localizedTitle}" en una categoría general para tienda online. Máximo 3 palabras, en Español. Ejemplos: "Electrónica", "Deportes y Ciclismo", "Hogar", "Salud y Belleza". Responde SOLO con el nombre de la categoría, sin comillas.`;
@@ -220,7 +220,6 @@ export async function listenForCandidates() {
             console.warn('⚠️ No se pudo inferir la categoría con Gemini, usando fallback.');
           }
 
-          // Generamos el slug SEO
           const categorySlug = finalCategoryName
             .toLowerCase()
             .normalize("NFD") 
@@ -228,7 +227,6 @@ export async function listenForCandidates() {
             .replace(/[^a-z0-9]+/g, '-') 
             .replace(/(^-|-$)+/g, ''); 
 
-          // ⚡ FIX: Usamos UPSERT (ON CONFLICT) para evitar el crasheo si el slug ya existe
           const newCat = await client.query(`
             INSERT INTO categories (ali_category_id, name, slug) 
             VALUES ($1, $2, $3) 
@@ -268,8 +266,8 @@ export async function listenForCandidates() {
           detail.properties = await gemini.translateAttributes(rawProperties, targetLang);
         }
 
-      // --- ⚡ LÓGICA DE DÍAS DE TRÁNSITO AL VUELO ---
-      let estimatedTransitDays = 15; // Fallback por defecto si no viene dato
+      // --- LÓGICA DE DÍAS DE TRÁNSITO AL VUELO ---
+      let estimatedTransitDays = 15; 
       
       try {
         const rawEstimateDateStr = detail.delivery?.estimateDate;
@@ -304,13 +302,17 @@ export async function listenForCandidates() {
           updated_at = NOW(),
           status = 'WINNER',
           raw_details = EXCLUDED.raw_details,
-          estimated_transit_days = EXCLUDED.estimated_transit_days
+          estimated_transit_days = EXCLUDED.estimated_transit_days,
+          video_url = EXCLUDED.video_url,
+          local_images = EXCLUDED.local_images
         RETURNING id;
       `;
 
       const productRes = await client.query(insertQuery, [
         batchId, aliexpress_id, detail.title, dbCategoryId, dbSupplierId, 
-        detail.imageUrl || detail.images[0], finalVideoUrl, JSON.stringify(localImages),
+        detail.imageUrl || detail.images[0], 
+        finalVideoUrl, // ⚡ FIX: Video ahora entra a la Base de Datos
+        JSON.stringify(cleanLocalImages), // ⚡ FIX: Guardamos el array limpio
         detail.price, detail.shippingFee, 
         analysis.analysis.suggestedPriceLocal,
         (analysis.analysis.suggestedPriceLocal / parseFloat(rate_to_usd)),
@@ -325,12 +327,11 @@ export async function listenForCandidates() {
       const internalProductId = productRes.rows[0].id;
 
       // ==========================================================
-      // 8. PERSISTENCIA DE VARIANTES (MAPEO ROBUSTO SKUDATA)
-      // ========================== ⚡ V6.0 ⚡ =====================
+      // 8. PERSISTENCIA DE VARIANTES
+      // ==========================================================
       const skuData = detail.sku; 
 
       if (skuData && skuData.props && skuData.base) {
-        // Mapa de Propiedades (Pid:Vid -> Metadata Legible)
         const propsMap = new Map();
         skuData.props.forEach((prop: any) => {
           prop.values.forEach((val: any) => {
@@ -342,9 +343,7 @@ export async function listenForCandidates() {
           });
         });
 
-        // Upsert de Combinaciones Reales
         for (const variantBase of skuData.base) {
-          // ⚡ FIX: Guardián contra el crash de 'split' en productos sin variantes
           const propPathRaw = variantBase.propMap || variantBase.propPath || "";
           const propPaths = propPathRaw ? propPathRaw.split(';') : [];
           
@@ -352,11 +351,9 @@ export async function listenForCandidates() {
           let sizeName = null;
           let variantImage = variantBase.image || null;
 
-          // Solo iteramos si realmente hay propiedades (colores/tallas)
           propPaths.forEach((path: string) => {
             const info = propsMap.get(path);
             if (info) {
-              // ID 14 = Color, ID 5 = Tamaño en Ali
               if (path.startsWith('14:') || info.name.toLowerCase().includes('color')) {
                 colorName = info.value;
                 if (!variantImage) variantImage = info.image; 
@@ -366,8 +363,8 @@ export async function listenForCandidates() {
             }
           });
 
-          // Aseguramos que el precio nunca sea NaN
-          const variantPriceUsd = parseFloat(variantBase.price || detail.price || '0');
+          // ⚡ FIX: Extraemos primero el promotionPrice (precio real), y usamos price solo como respaldo
+          const variantPriceUsd = parseFloat(variantBase.promotionPrice || variantBase.price || detail.price || '0');
 
           await client.query(`
             INSERT INTO product_variants (

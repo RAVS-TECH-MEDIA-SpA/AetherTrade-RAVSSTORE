@@ -1,5 +1,4 @@
 // src/lib/api.ts
-// const API_URL = process.env.NEXT_PUBLIC_API_GATEWAY_URL || 'http://localhost:8080';
 export const API_URL = 
   process.env.NEXT_PUBLIC_API_GATEWAY_URL || 
   (process.env.NODE_ENV === 'production' 
@@ -14,25 +13,36 @@ export function processProductPricing(product: any) {
     return Math.ceil(price / 100) * 100 - 10;
   };
 
-  // Usamos el dólar configurado en la BD (o 930 de fallback)
-  const exchangeRate = Number(product.rate_to_usd) || 930;
+  const exchangeRate = Number(product.rate_to_usd) || 940;
   const baseSuggested = Number(product.suggested_price_local) || 0;
+  const baseCostUsd = Number(product.base_cost_usd) || 0; 
 
   let minVariantPrice = Infinity;
 
-  // 1. RECORRER VARIANTES: Conversión directa y búsqueda del menor
+  // 1. RECORRER VARIANTES: Cálculo inteligente y rescate de precios reales
   if (product.variants && product.variants.length > 0) {
+    
+    // ⚡ FIX ANTIDOTO: Creamos un mapa leyendo el JSON original para rescatar el promotionPrice real
+    const rawVariants = product.raw_details?.sku?.base || [];
+    const realPriceMap = new Map();
+    rawVariants.forEach((rv: any) => {
+      realPriceMap.set(rv.skuId, Number(rv.promotionPrice || rv.price || 0));
+    });
+
     product.variants = product.variants.map((v: any) => {
-      const costUsd = Number(v.additional_cost_usd) || 0;
-      
-      if (costUsd > 0) {
-        // CÁLCULO ESTRICTO: Solo USD * Tasa de cambio
-        v.calculated_price_local = getPsychologicalPrice(costUsd * exchangeRate);
+      // ⚡ Usamos el precio del mapa rescatado, si no existe caemos en la DB
+      const variantCostUsd = realPriceMap.get(v.ali_sku_id) || Number(v.additional_cost_usd) || 0;
+
+      if (variantCostUsd > baseCostUsd) {
+        // Hay un costo adicional real para esta variante
+        const extraCostUsd = variantCostUsd - baseCostUsd;
+        const extraCostLocal = extraCostUsd * exchangeRate * 1.19; // Convertimos sumando el IVA
+        v.calculated_price_local = getPsychologicalPrice(baseSuggested + extraCostLocal);
       } else {
-        v.calculated_price_local = baseSuggested;
+        // Cuesta lo mismo o menos, usamos el precio sugerido intacto
+        v.calculated_price_local = getPsychologicalPrice(baseSuggested);
       }
 
-      // Rastrear cuál es el precio menor
       if (v.calculated_price_local > 0 && v.calculated_price_local < minVariantPrice) {
         minVariantPrice = v.calculated_price_local;
       }
@@ -41,15 +51,14 @@ export function processProductPricing(product: any) {
     });
   }
 
-  // 2. PUBLICAR EN PORTADA EL MENOR PRECIO ENCONTRADO
+  // 2. PUBLICAR EN PORTADA EL MENOR PRECIO
   if (minVariantPrice !== Infinity && minVariantPrice > 0) {
     product.calculated_min_price = minVariantPrice;
   } else {
-    // Si no hay variantes, usa el precio base
-    product.calculated_min_price = baseSuggested; 
+    product.calculated_min_price = getPsychologicalPrice(baseSuggested); 
   }
 
-  // 3. PRECIO TACHADO Y DESCUENTO (Generado visualmente en base al precio real)
+  // 3. PRECIO TACHADO Y DESCUENTO
   const comparePrice = Number(product.compare_at_price) || 0;
   if (comparePrice > product.calculated_min_price && product.calculated_min_price > 0) {
     product.calculated_old_price = comparePrice;
@@ -65,13 +74,9 @@ export function processProductPricing(product: any) {
     product.calculated_discount_percent = 0;
   }
 
-  // 4. LÓGICA DE ENTREGA DINÁMICA (Calculada al vuelo según el tránsito de la BD)
+  // 4. LÓGICA DE ENTREGA DINÁMICA
   const today = new Date();
-  
-  // Leemos los días calculados por el Worker (o usamos 15 de fallback)
   const transitDays = Number(product.estimated_transit_days) || 15;
-  
-  // Rango inteligente (min -3 días optimista, max +4 días conservador por aduanas/fines de semana)
   const minDays = Math.max(1, transitDays - 3); 
   const maxDays = transitDays + 4; 
 
@@ -82,11 +87,7 @@ export function processProductPricing(product: any) {
   maxDate.setDate(today.getDate() + maxDays);
 
   const options: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short' };
-  const formattedMin = minDate.toLocaleDateString('es-CL', options);
-  const formattedMax = maxDate.toLocaleDateString('es-CL', options);
-
-  // Inyectamos la fecha proyectada limpia
-  product.calculated_estimated_delivery = `${formattedMin} - ${formattedMax}`;
+  product.calculated_estimated_delivery = `${minDate.toLocaleDateString('es-CL', options)} - ${maxDate.toLocaleDateString('es-CL', options)}`;
 
   return product;
 }

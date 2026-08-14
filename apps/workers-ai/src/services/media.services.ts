@@ -8,24 +8,26 @@ const __dirname = path.dirname(__filename);
 
 export class MediaService {
   private storage: Storage;
-  private bucketName = 'ravstore-media';
+  private bucketName: string;
 
- constructor() {
-    // Si estamos en producción, instanciamos sin parámetros para que Cloud Run inyecte los permisos automáticamente.
+  constructor() {
+    // ⚡ 1. Leemos el bucket desde la variable de entorno, si no existe usamos un fallback local
+    this.bucketName = process.env.GCS_BUCKET_NAME || 'ravstore-media-local';
+
     if (process.env.NODE_ENV === 'production') {
+      // Producción: Cloud Run inyecta los credenciales automáticamente
       this.storage = new Storage();
     } else {
-      // Entorno local con emulador
+      // Local: Entorno con emulador
       this.storage = new Storage({
         projectId: 'aethertrade-local',
         credentials: { client_email: 'dummy@dummy.com', private_key: 'dummy' }
       });
+      // ⚡ 2. Solo intentamos crear el bucket "virtual" si estamos en local
+      this.initLocalBucket();
     }
-    
-    this.initLocalBucket();
   }
 
-  // ⚡ Crea el bucket virtual en el emulador al arrancar
   private async initLocalBucket() {
     try {
       const [exists] = await this.storage.bucket(this.bucketName).exists();
@@ -34,7 +36,7 @@ export class MediaService {
         console.log(`[STORAGE] Bucket local '${this.bucketName}' creado exitosamente.`);
       }
     } catch (error) {
-      console.log(`[STORAGE] Nota: El bucket ya existe o hubo un error leve al crearlo.`);
+      console.log(`[STORAGE] Nota: El bucket local ya existe o hubo un error al crearlo.`);
     }
   }
 
@@ -61,10 +63,14 @@ export class MediaService {
         metadata: { contentType: 'image/jpeg' }
       });
 
-      console.log(`  ✅ Subida a GCS Emulado: ${fileName}`);
+      console.log(`  ✅ Subida a GCS: ${fileName} en el bucket ${this.bucketName}`);
       
-      // Retornamos una URL local para que puedas verla si quieres
-      return `http://localhost:4443/${this.bucketName}/${fileName}`;
+      // ⚡ 3. Retornamos la URL PÚBLICA de Google Cloud en producción, y localhost en desarrollo
+      if (process.env.NODE_ENV === 'production') {
+        return `https://storage.googleapis.com/${this.bucketName}/${fileName}`;
+      } else {
+        return `http://localhost:4443/${this.bucketName}/${fileName}`;
+      }
 
     } catch (error: any) {
       console.error(`  ❌ Error en descarga/subida de imagen ${index}:`, error.message);
