@@ -58,7 +58,7 @@ export class SerperService {
       .trim();
   }
 
-  // ⚡ EL FIX DE LOS VIDEOS NULL ESTÁ AQUÍ
+  // ⚡ FIX: Búsqueda expandida a múltiples plataformas y URLs directas
   private async executeVideoSearch(query: string): Promise<string | null> {
     try {
       const response = await axios.post(
@@ -73,19 +73,26 @@ export class SerperService {
       
       if (videos.length === 0) return null;
 
-      // Buscamos de forma segura
       const bestVideo = videos.find((v: any) => {
         if (!v || !v.link || !v.title) return false;
         const url = v.link.toLowerCase();
         const title = v.title.toLowerCase();
         
-        const isYouTube = url.includes('youtube.com') || url.includes('youtu.be');
+        // Ampliamos el espectro a plataformas de video compatibles o MP4 directo
+        const isValidSource = url.includes('youtube.com') || 
+                              url.includes('youtu.be') ||
+                              url.includes('tiktok.com') ||
+                              url.includes('vimeo.com') ||
+                              url.includes('dailymotion.com') ||
+                              url.includes('facebook.com/watch') ||
+                              url.includes('instagram.com/reel') ||
+                              url.endsWith('.mp4');
+
         const isNotTrash = !title.includes('review') && !title.includes('failed') && !title.includes('worst');
         
-        return isYouTube && isNotTrash;
+        return isValidSource && isNotTrash;
       });
 
-      // ⚡ Evitamos el undefined de Array.find()
       const finalLink = bestVideo?.link || videos[0]?.link || null;
       
       if (finalLink) {

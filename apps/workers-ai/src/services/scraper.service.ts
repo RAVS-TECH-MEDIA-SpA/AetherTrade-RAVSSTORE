@@ -81,6 +81,13 @@ export class ScraperService {
       return 0;
     }
 
+    // ⚡ NUEVO FIX: Filtro anti-menús de tienda (ignora "hasta $10.000", rangos o descuentos)
+    const storeMenuPattern = /(?:hasta\s*\$|desde\s*\$|\$\d+\s*\-\s*\$\d+|dcto|descuento|cuotas)/i;
+    if (storeMenuPattern.test(text)) {
+      console.log(`🚫 [DEBUG PARSEPRICE] Descartado por parecer un menú de filtros de tienda: "${text.substring(0, 40)}..."`);
+      return 0;
+    }
+
     // ⚡ FIX COMAS: El regex de Chile ahora admite tanto puntos (\.) como comas (,) en los miles.
     // ⚡ FIX: Añadido requerimiento de símbolo de moneda para evitar falsos positivos
     const priceRegex = country === 'CL' 
