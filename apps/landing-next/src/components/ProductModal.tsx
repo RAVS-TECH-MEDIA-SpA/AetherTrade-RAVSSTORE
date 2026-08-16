@@ -1,6 +1,8 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { X, ShoppingCart, Truck, PlayCircle, Loader2, CheckCircle2, Sparkles } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { useCartStore } from '@/store/cartStore';
 
 interface ProductModalProps {
   productId: string;
@@ -14,6 +16,9 @@ export default function ProductModal({ productId, onClose }: ProductModalProps) 
   const [loading, setLoading] = useState(true);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [error, setError] = useState(false);
+
+  const router = useRouter();
+  const addItem = useCartStore((state) => state.addItem);
 
   const getVideoEmbedUrl = (url: string) => {
     if (!url) return null;
@@ -74,47 +79,48 @@ export default function ProductModal({ productId, onClose }: ProductModalProps) 
     return null;
   };
 
-  const handleCheckout = async () => {
+  const handleCheckout = () => {
     if (checkoutLoading) return;
     setCheckoutLoading(true);
+    
     try {
-      // ⚡ Rescatamos las cookies del Pixel de Facebook justo antes del checkout
-      const tracking = {
-        fbc: getCookie('_fbc'),
-        fbp: getCookie('_fbp')
-      };
+      // 1. Tomamos el precio base sugerido (el producto principal), 
+      // NO el minPrice (que podría ser el accesorio/filtro barato)
+      const basePrice = data.suggested_price_local;
+      const mainTitle = data.marketing_copy?.title_localized || data.title_original;
 
-      const res = await fetch(`/api/checkout/products/${productId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        // ⚡ Inyectamos el tracking en el body
-        body: JSON.stringify({ 
-          quantity: 1,
-          tracking: tracking 
-        })
+      // 2. Agregamos el producto al carrito global
+      addItem({
+        id: data.id, // ⚡ AÑADIMOS EL ID REQUERIDO POR LA INTERFAZ
+        productId: data.id,
+        variantId: undefined, // Enviamos undefined para solucionar el error de TypeScript
+        title: mainTitle,
+        price: basePrice,
+        quantity: 1,
+        imageUrl: data.image_url,
+        color: 'Estándar', // Fallback visual para el carrito
+        size: 'Único'
       });
-      const result = await res.json();
-      if (result.init_point) {
-        window.location.href = result.init_point;
-      } else {
-        throw new Error(result.error || 'Error al generar checkout');
-      }
+
+      // 3. Mandamos al cliente a tu Landing de Checkout para que llene su dirección
+      onClose(); // Cerramos el modal para que no quede abierto por detrás
+      router.push('/checkout');
     } catch (err) {
-      console.error("🚨 Error al iniciar el proceso de compra:", err);
-      alert("Hubo un problema al conectar con la pasarela de pagos.");
+      console.error("🚨 Error al agregar al carrito:", err);
+      alert("Hubo un problema al preparar tu compra.");
     } finally {
       setCheckoutLoading(false);
     }
   };
 
-  if (loading) return <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90"><div className="w-12 h-12 border-4 border-violet-500 border-t-transparent rounded-full animate-spin"></div></div>;
-  if (error || !data) return null;
+    if (loading) return <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90"><div className="w-12 h-12 border-4 border-violet-500 border-t-transparent rounded-full animate-spin"></div></div>;
+    if (error || !data) return null;
 
-  // Extracción de datos con fallback
-  const title = data.marketing_copy?.title_localized || data.marketing_copy?.headline || data.title_original;
-  const description = data.marketing_copy?.description || data.marketing_copy?.copy;
-  const hook = data.marketing_copy?.hook;
-  const benefits = data.marketing_copy?.benefits || []; // El array que vimos en tu JSON
+    // Extracción de datos con fallback
+    const title = data.marketing_copy?.title_localized || data.marketing_copy?.headline || data.title_original;
+    const description = data.marketing_copy?.description || data.marketing_copy?.copy;
+    const hook = data.marketing_copy?.hook;
+    const benefits = data.marketing_copy?.benefits || []; // El array que vimos en tu JSON
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/95 backdrop-blur-md">

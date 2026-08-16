@@ -5,7 +5,8 @@ import {
   getProductById, 
   updateProduct,
   triggerAnalysis,
-  searchProductsHandler // <-- NUEVA IMPORTACIÓN
+  cronTriggerAnalysis,
+  searchProductsHandler
 } from './controllers/dashboard.controller.js';
 import { handleCheckout } from './controllers/checkoutController.js';
 import { handleMPWebhook } from './webhooks/webhook.controller.js';
@@ -48,4 +49,6 @@ router.post('/webhooks/mercadopago', handleMPWebhook);
 // Endpoint para el Catálogo de Commerce Manager de Meta
 router.get('/feed/facebook.xml', generateFacebookFeed);
 
+//Ruta para el trabajo de cron que hace la busqueda automática
+router.post('/cron/trigger-discovery', cronTriggerAnalysis);
 export default router;

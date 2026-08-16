@@ -6,7 +6,7 @@ const checkoutService = new CheckoutService();
 export const handleCheckout = async (req: Request, res: Response) => {
   try {
     const orderData = req.body;
-
+console.log("🚀 Recibido request de Checkout con orderData:", orderData);
     // Validación original mantenida
     if (!orderData.items || orderData.items.length === 0) {
       return res.status(400).json({ error: 'El carrito está vacío' });
@@ -23,7 +23,7 @@ export const handleCheckout = async (req: Request, res: Response) => {
       fbc: req.cookies?._fbc || orderData.tracking?.fbc || null, 
       fbp: req.cookies?._fbp || orderData.tracking?.fbp || null  
     };
-
+console.log("llamando a createPreference con orderData y trackingData:", orderData, trackingData);
     // ⚡ FIX: Le pasamos la orden Y la huella digital (trackingData)
     const result = await checkoutService.createPreference(orderData, trackingData);
     

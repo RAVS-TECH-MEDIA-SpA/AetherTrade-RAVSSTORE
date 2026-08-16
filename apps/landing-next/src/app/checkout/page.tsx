@@ -1,35 +1,65 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useCartStore } from '@/store/cartStore';
 import { ShieldCheck, Truck, CreditCard, ChevronLeft } from 'lucide-react';
 import Link from 'next/link';
-import InitiateCheckoutTracker from './components/InitiateCheckoutTracker'; // <-- Ajusta path si lo tienes en @/components
+import InitiateCheckoutTracker from './components/InitiateCheckoutTracker';
 import { getMetaCookies } from '@/lib/metaPixel';
+import Script from 'next/script'; // ⚡ Importamos Script de Next.js
 
-// ⚡ UTILIDADES DE NORMALIZACIÓN
+// ⚡ UTILIDADES DE NORMALIZACIÓN Y VALIDACIÓN
 const formatRut = (rut: string) => {
-  // Quita todo lo que no sea número o la letra K
-  const cleanRut = rut.replace(/[^0-9kK]/g, '').toUpperCase();
+  let cleanRut = rut.replace(/[^0-9kK]/g, '').toUpperCase();
+  if (cleanRut.length > 9) cleanRut = cleanRut.slice(0, 9);
   if (cleanRut.length < 2) return cleanRut;
   
-  // Separa el dígito verificador del resto del cuerpo
   const body = cleanRut.slice(0, -1);
   const dv = cleanRut.slice(-1);
-  
-  // Agrega los puntos al cuerpo del RUT
   const formattedBody = body.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
   return `${formattedBody}-${dv}`;
 };
 
-const cleanText = (text: string) => {
-  // Quita espacios al inicio y al final, y previene inyección de código básico
-  return text.trim().replace(/[<>]/g, '');
+const isValidRut = (rut: string) => {
+  if (!/^[0-9]+-[0-9kK]{1}$/.test(rut)) return false;
+  const [body, dv] = rut.split('-');
+  let rutNum = parseInt(body, 10);
+  let m = 0, s = 1;
+  for (; rutNum; rutNum = Math.floor(rutNum / 10)) {
+    s = (s + rutNum % 10 * (9 - m++ % 6)) % 11;
+  }
+  const v = s > 0 ? (s - 1).toString() : 'K';
+  return v === dv.toUpperCase();
+};
+
+const cleanText = (text: string) => text.trim().replace(/[<>]/g, '');
+
+// ⚡ MAPEO DE REGIONES DE GOOGLE A TUS OPCIONES
+const mapGoogleRegionToLocal = (googleRegion: string) => {
+  const g = googleRegion.toLowerCase();
+  if (g.includes('metropolitana')) return 'Región Metropolitana';
+  if (g.includes('valparaíso') || g.includes('valparaiso')) return 'Valparaíso';
+  if (g.includes('biobío') || g.includes('bío bío') || g.includes('bio bio')) return 'Biobío';
+  if (g.includes('arica')) return 'Arica y Parinacota';
+  if (g.includes('tarapacá') || g.includes('tarapaca')) return 'Tarapacá';
+  if (g.includes('antofagasta')) return 'Antofagasta';
+  if (g.includes('atacama')) return 'Atacama';
+  if (g.includes('coquimbo')) return 'Coquimbo';
+  if (g.includes('higgins')) return "O'Higgins";
+  if (g.includes('maule')) return 'Maule';
+  if (g.includes('ñuble') || g.includes('nuble')) return 'Ñuble';
+  if (g.includes('araucanía') || g.includes('araucania')) return 'La Araucanía';
+  if (g.includes('ríos') || g.includes('rios')) return 'Los Ríos';
+  if (g.includes('lagos')) return 'Los Lagos';
+  if (g.includes('aysén') || g.includes('aysen')) return 'Aysén';
+  if (g.includes('magallanes')) return 'Magallanes';
+  return 'Región Metropolitana'; // Default fallback
 };
 
 declare global {
   interface Window {
     MercadoPago: any;
+    google: any;
   }
 }
 
@@ -37,31 +67,69 @@ export default function CheckoutPage() {
   const { items, getTotalPrice } = useCartStore();
   const [isMounted, setIsMounted] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [rutError, setRutError] = useState('');
 
-  // Estado del formulario de envío
+  // ⚡ Referencia para el input de Google Maps
+  const addressInputRef = useRef<HTMLInputElement>(null);
+
   const [shippingData, setShippingData] = useState({
     email: '',
     firstName: '',
     lastName: '',
     rut: '',
-    phone: '',
+    phone: '+569',
     address: '',
+    details: '',
     city: '',
     region: 'Región Metropolitana'
   });
 
-  // Cargar el Script de Mercado Pago dinámicamente
-  useEffect(() => {
-    setIsMounted(true);
-    const script = document.createElement('script');
-    script.src = 'https://sdk.mercadopago.com/js/v2';
-    script.async = true;
-    document.body.appendChild(script);
-    
-    return () => {
-      document.body.removeChild(script);
-    };
-  }, []);
+  useEffect(() => { setIsMounted(true); }, []);
+
+  // ⚡ Inicializa Google Autocomplete una vez que el script se carga
+  const initGoogleAutocomplete = () => {
+    if (!addressInputRef.current || !window.google) return;
+
+    const autocomplete = new window.google.maps.places.Autocomplete(addressInputRef.current, {
+      componentRestrictions: { country: "cl" }, // Restringe a Chile
+      fields: ["address_components", "formatted_address"],
+      types: ["address"],
+    });
+
+    autocomplete.addListener("place_changed", () => {
+      const place = autocomplete.getPlace();
+      if (!place.address_components) return;
+
+      let street = "";
+      let number = "S/N";
+      let city = "";
+      let region = "Región Metropolitana";
+
+      // Desglosamos la data que nos envía Google
+      place.address_components.forEach((component: any) => {
+        const types = component.types;
+        if (types.includes("route")) street = component.long_name;
+        if (types.includes("street_number")) number = component.long_name;
+        if (types.includes("locality") || types.includes("administrative_area_level_3")) city = component.long_name;
+        if (types.includes("administrative_area_level_1")) region = component.long_name;
+      });
+
+      const fullStreet = number !== "S/N" ? `${street} ${number}` : street;
+      const mappedRegion = mapGoogleRegionToLocal(region);
+
+      setShippingData(prev => ({
+        ...prev,
+        address: fullStreet,
+        city: city,
+        region: mappedRegion
+      }));
+
+      // Forzamos el valor visible del input
+      if (addressInputRef.current) {
+        addressInputRef.current.value = fullStreet;
+      }
+    });
+  };
 
   const total = getTotalPrice();
   const formattedTotal = new Intl.NumberFormat('es-CL', {
@@ -71,51 +139,82 @@ export default function CheckoutPage() {
  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     let { name, value } = e.target;
     
-    // Si el campo es el RUT, lo formateamos en tiempo real
     if (name === 'rut') {
       value = formatRut(value);
+      setRutError(''); // Limpia el error mientras escribe
+    }
+
+    // ⚡ FORMATEO INTELIGENTE DEL TELÉFONO
+    if (name === 'phone') {
+      // 1. Dejamos solo los números puros
+      let digits = value.replace(/\D/g, '');
+      
+      // 2. Si el usuario pegó su número con el 569 incluido, se lo quitamos temporalmente para no duplicarlo
+      if (digits.startsWith('569')) digits = digits.slice(3);
+      else if (digits.startsWith('56')) digits = digits.slice(2);
+      else if (digits.startsWith('9')) digits = digits.slice(1);
+      
+      // 3. Forzamos el +569 al inicio y limitamos a 8 dígitos adicionales
+      value = '+569' + digits.slice(0, 8);
     }
     
     setShippingData({ ...shippingData, [name]: value });
   };
 
-const handlePayment = async (e: React.FormEvent) => {
+  // ⚡ NUEVO: Valida el RUT apenas el usuario hace clic fuera de la casilla
+  const handleRutBlur = () => {
+    if (!shippingData.rut) return; // Si está vacío, no hace nada
+    
+    const cleanRutNumber = shippingData.rut.replace(/\./g, '');
+    if (!isValidRut(cleanRutNumber)) {
+      setRutError('El RUT ingresado no es válido.');
+    } else {
+      setRutError(''); // Lo limpia si lo corrigió
+    }
+  };
+  const handlePayment = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    const cleanRutNumber = shippingData.rut.replace(/\./g, '');
+    if (!isValidRut(cleanRutNumber)) {
+      setRutError('Por favor, ingresa un RUT chileno válido.');
+      document.getElementById('rut-input')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+    if (shippingData.phone.length < 8) {
+      alert("El número de teléfono es muy corto.");
+      return;
+    }
+
     setIsProcessing(true);
 
     try {
-      // Usamos el endpoint de checkout general de Next.js
       const baseUrl = '/api/checkout';
-
-      // <-- INTEGRACIÓN CAPI: Captura fbc/fbp del navegador
       const { fbc, fbp } = getMetaCookies();
-
-      // <-- INTEGRACIÓN PurchaseTracker: Guarda backup para el success
       localStorage.setItem('last_order_backup', JSON.stringify({ items, total: getTotalPrice() }));
 
       const payload = {
         customerInfo: {
           email: shippingData.email.trim().toLowerCase(),
           name: `${cleanText(shippingData.firstName)} ${cleanText(shippingData.lastName)}`,
-          rut: shippingData.rut,
-          phone: shippingData.phone.replace(/[^\d+]/g, '')
+          rut: cleanRutNumber,
+          phone: shippingData.phone
         },
         shippingAddress: {
           street: cleanText(shippingData.address),
-          number: "S/N", // AutoDS no exige número separado estrictamente si va en la calle
+          number: "S/N", 
           city: cleanText(shippingData.city),
           state: shippingData.region,
-          zip: "0000000" // Valor por defecto. Si luego lo agregas al form, lo cambias aquí.
+          zip: "0000000",
+          details: cleanText(shippingData.details) // ⚡ NUEVO DATO ENVIADO AL BACKEND
         },
-        // ⚡ LA CLAVE: Enviamos el carrito completo con variantes
         items: items.map(item => ({
-          product_id: item.productId, // El ID de tu BD (UUID)
-          variant_id: item.variantId, // El ID de la variante elegida
+          product_id: item.productId, 
+          variant_id: item.variantId, 
           quantity: item.quantity,
           title: cleanText(item.title),
           price: item.price
         })),
-        // <-- INTEGRACIÓN CAPI: Enviamos cookies y contexto al gateway
         fbc,
         fbp,
         clientUserAgent: navigator.userAgent,
@@ -127,16 +226,18 @@ const handlePayment = async (e: React.FormEvent) => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-
+      
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.error || 'Error desconocido en el servidor');
       }
 
-      const { init_point } = await response.json();
+      const data = await response.json();
+      const link_de_pago = data.init_point; 
 
-      // Redirigir directamente al link de pago de MercadoPago
-      window.location.href = init_point;
+      if (!link_de_pago) throw new Error("El servidor no devolvió el link de pago");
+
+      window.location.href = link_de_pago;
 
     } catch (error: any) {
       console.error("❌ Error en Checkout:", error.message || error);
@@ -146,7 +247,6 @@ const handlePayment = async (e: React.FormEvent) => {
     }
   };
 
-  // Evitar error de hidratación o renderizar si el carrito está vacío
   if (!isMounted) return null;
 
   if (items.length === 0) {
@@ -163,9 +263,15 @@ const handlePayment = async (e: React.FormEvent) => {
 
   return (
     <div className="min-h-screen bg-[#020617] text-white selection:bg-violet-500/30">
-        <InitiateCheckoutTracker products={items.map(i => ({ id: i.productId }))} total={total} />
+      <InitiateCheckoutTracker products={items.map(i => ({ id: i.productId }))} total={total} />
 
-      {/* Header Minimalista */}
+      {/* ⚡ CARGA EL SCRIPT DE GOOGLE MAPS DE FORMA OPTIMIZADA */}
+      <Script 
+        src={`https://maps.googleapis.com/maps/api/js?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY}&libraries=places`}
+        strategy="afterInteractive"
+        onLoad={initGoogleAutocomplete}
+      />
+
       <header className="border-b border-white/10 bg-slate-950/80 backdrop-blur-md sticky top-0 z-50">
         <div className="max-w-6xl mx-auto px-6 h-20 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors">
@@ -182,46 +288,92 @@ const handlePayment = async (e: React.FormEvent) => {
       <main className="max-w-6xl mx-auto px-6 py-12">
         <div className="flex flex-col lg:flex-row gap-12 lg:gap-20">
           
-          {/* 📝 COLUMNA IZQUIERDA: Formulario de Envío */}
           <div className="flex-1 space-y-10">
             <div>
               <h2 className="text-2xl font-black uppercase tracking-widest italic mb-6">Datos de Envío</h2>
               <form id="checkout-form" onSubmit={handlePayment} className="space-y-6">
                 
-                {/* Contacto */}
                 <div className="space-y-4">
                   <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Contacto</h3>
                   <div>
-                    <input required type="email" name="email" value={shippingData.email} onChange={handleInputChange} placeholder="Correo electrónico" className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 transition-all" />
+                    <input required type="email" name="email" value={shippingData.email} onChange={handleInputChange} placeholder="Correo electrónico" className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-violet-500 transition-all" />
+                  </div>
+                  <div>
+                    <input required type="tel" name="phone" maxLength={12} value={shippingData.phone} onChange={handleInputChange} placeholder="Teléfono (Ej: +56912345678)" className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-violet-500 transition-all" />
                   </div>
                 </div>
 
-                {/* Dirección */}
                 <div className="space-y-4">
                   <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-8">Dirección de Entrega</h3>
-                  <div className="grid grid-cols-2 gap-4">
-                    <input required type="text" name="firstName" value={shippingData.firstName} onChange={handleInputChange} placeholder="Nombre" className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-violet-500 transition-all" />
-                    <input required type="text" name="lastName" value={shippingData.lastName} onChange={handleInputChange} placeholder="Apellidos" className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-violet-500 transition-all" />
-                  </div>
-                  <input required type="text" name="rut" value={shippingData.rut} onChange={handleInputChange} placeholder="RUT / Documento de Identidad" className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-violet-500 transition-all" />
-                  <input required type="text" name="address" value={shippingData.address} onChange={handleInputChange} placeholder="Calle y Número (Ej: Av. Providencia 1234, Depto 50)" className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-violet-500 transition-all" />
                   
+                  <div className="grid grid-cols-2 gap-4">
+                    <input required type="text" name="firstName" minLength={2} value={shippingData.firstName} onChange={handleInputChange} placeholder="Primer Nombre" className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-violet-500 transition-all" />
+                    <input required type="text" name="lastName" minLength={2} value={shippingData.lastName} onChange={handleInputChange} placeholder="Apellidos" className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-violet-500 transition-all" />
+                  </div>
+                  
+                <div>
+                    <input 
+                      id="rut-input" 
+                      required 
+                      type="text" 
+                      name="rut" 
+                      value={shippingData.rut} 
+                      onChange={handleInputChange} 
+                      onBlur={handleRutBlur}
+                      placeholder="RUT (Ej: 12.345.678-9)" 
+                      className={`w-full bg-white/5 border ${rutError ? 'border-red-500' : 'border-white/10'} rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-violet-500 transition-all`} 
+                    />
+                    {rutError && <p className="text-red-400 text-xs mt-1 ml-1">{rutError}</p>}
+                  </div>
+
+                  {/* ⚡ BUSCADOR DE GOOGLE PLACES */}
+                  <div>
+                    <input 
+                      ref={addressInputRef}
+                      required 
+                      type="text" 
+                      placeholder="Busca tu dirección (Ej: Providencia 123)..." 
+                      className="w-full bg-white/5 border border-violet-500/50 rounded-xl px-4 py-3 text-white placeholder-slate-400 focus:outline-none focus:border-violet-400 focus:ring-1 focus:ring-violet-400 transition-all" 
+                    />
+                    <p className="text-[10px] text-slate-500 mt-1 ml-1">Powered by Google Maps</p>
+                  </div>
+                  <div>
+                    <input 
+                      type="text" 
+                      name="details" 
+                      value={shippingData.details} 
+                      onChange={handleInputChange} 
+                      placeholder="Dpto, Casa, Torre, Block o Pasaje (Opcional)" 
+                      className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-violet-500 transition-all" 
+                    />
+                  </div>
                   <div className="grid grid-cols-2 gap-4">
                     <input required type="text" name="city" value={shippingData.city} onChange={handleInputChange} placeholder="Ciudad / Comuna" className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-violet-500 transition-all" />
                     <select name="region" value={shippingData.region} onChange={handleInputChange} className="w-full bg-[#0a0f24] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-violet-500 transition-all appearance-none">
                       <option value="Región Metropolitana">Región Metropolitana</option>
+                      <option value="Arica y Parinacota">Arica y Parinacota</option>
+                      <option value="Tarapacá">Tarapacá</option>
+                      <option value="Antofagasta">Antofagasta</option>
+                      <option value="Atacama">Atacama</option>
+                      <option value="Coquimbo">Coquimbo</option>
                       <option value="Valparaíso">Valparaíso</option>
+                      <option value="O'Higgins">O'Higgins</option>
+                      <option value="Maule">Maule</option>
+                      <option value="Ñuble">Ñuble</option>
                       <option value="Biobío">Biobío</option>
-                      <option value="Otras Regiones">Otras Regiones</option>
+                      <option value="La Araucanía">La Araucanía</option>
+                      <option value="Los Ríos">Los Ríos</option>
+                      <option value="Los Lagos">Los Lagos</option>
+                      <option value="Aysén">Aysén</option>
+                      <option value="Magallanes">Magallanes</option>
                     </select>
                   </div>
-                  <input required type="tel" name="phone" value={shippingData.phone} onChange={handleInputChange} placeholder="Teléfono" className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-violet-500 transition-all" />
                 </div>
               </form>
             </div>
           </div>
 
-          {/* 🛒 COLUMNA DERECHA: Resumen de la Orden */}
+          {/* ... (Tu Columna Derecha del Resumen se mantiene igual) ... */}
           <div className="lg:w-[450px]">
             <div className="bg-slate-900/60 border border-white/5 rounded-[2rem] p-8 space-y-8 sticky top-28 shadow-2xl backdrop-blur-xl">
               <h2 className="text-xl font-black uppercase tracking-widest italic border-b border-white/10 pb-4">Resumen</h2>
@@ -272,7 +424,7 @@ const handlePayment = async (e: React.FormEvent) => {
                   : 'bg-violet-600 hover:bg-violet-500 text-white'
                 }`}
               >
-                {isProcessing ? 'Conectando con Mercado Pago...' : (
+                {isProcessing ? 'Conectando...' : (
                   <>Pagar Ahora <CreditCard className="w-5 h-5" /></>
                 )}
               </button>
@@ -289,7 +441,6 @@ const handlePayment = async (e: React.FormEvent) => {
   );
 }
 
-// Icono auxiliar si el carrito está vacío
 function ShoppingCartIcon(props: any) {
   return (
     <svg {...props} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>

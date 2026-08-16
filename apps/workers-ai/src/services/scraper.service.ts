@@ -88,6 +88,14 @@ export class ScraperService {
       return 0;
     }
 
+    // 3. ⚡ NUEVO: Filtro anti-packs (ignora "x2", "x3", "pack de 3", "3 piezas", "3 unidades")
+    // Se asegura de ignorar combos para no comparar 1 unidad tuya contra 3 de la competencia.
+    const multipackPattern = /(?:x\s*[2-9]|pack\s*(?:de)?\s*[2-9]|[2-9]\s*(?:piezas|unidades|pares|pz|uds))/i;
+    if (multipackPattern.test(text)) {
+      console.log(`🚫 [DEBUG PARSEPRICE] Descartado por ser un multipack (combo de varias unidades): "${text.substring(0, 40)}..."`);
+      return 0;
+    }
+
     // ⚡ FIX COMAS: El regex de Chile ahora admite tanto puntos (\.) como comas (,) en los miles.
     // ⚡ FIX: Añadido requerimiento de símbolo de moneda para evitar falsos positivos
     const priceRegex = country === 'CL' 
@@ -148,7 +156,11 @@ export class ScraperService {
       const { data } = await axios.post('https://google.serper.dev/search', {
         q: query,
         gl: country.toLowerCase().trim(),
-        hl: countryCode === 'US' ? "en" : "es"
+        hl: countryCode === 'US' ? "en" : "es",
+        // ⚡ EXPANSIÓN DE UNIVERSO: Le pedimos 40 resultados en lugar de los 10 por defecto
+        num: 40, 
+        // Forzamos a que traiga siempre el módulo de Shopping de Google si existe
+        autocorrect: true
       }, {
         headers: { 'X-API-KEY': this.apiKey, 'Content-Type': 'application/json' }
       });

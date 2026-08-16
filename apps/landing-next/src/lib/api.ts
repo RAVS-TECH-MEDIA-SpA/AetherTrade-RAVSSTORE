@@ -15,48 +15,46 @@ export function processProductPricing(product: any) {
 
   const exchangeRate = Number(product.rate_to_usd) || 940;
   const baseSuggested = Number(product.suggested_price_local) || 0;
-  const baseCostUsd = Number(product.base_cost_usd) || 0; 
 
   let minVariantPrice = Infinity;
+  let defaultVariantId = null; // ⚡ NUEVO: Para atrapar el ID de la variante más barata
 
-  // 1. RECORRER VARIANTES: Cálculo inteligente y rescate de precios reales
+  // 1. RECORRER VARIANTES: Lógica Ultra-Limpia basada estrictamente en la BD
   if (product.variants && product.variants.length > 0) {
-    
-    // ⚡ FIX ANTIDOTO: Creamos un mapa leyendo el JSON original para rescatar el promotionPrice real
-    const rawVariants = product.raw_details?.sku?.base || [];
-    const realPriceMap = new Map();
-    rawVariants.forEach((rv: any) => {
-      realPriceMap.set(rv.skuId, Number(rv.promotionPrice || rv.price || 0));
-    });
-
     product.variants = product.variants.map((v: any) => {
-      // ⚡ Usamos el precio del mapa rescatado, si no existe caemos en la DB
-      const variantCostUsd = realPriceMap.get(v.ali_sku_id) || Number(v.additional_cost_usd) || 0;
+      
+      // Tomamos directamente el delta de la base de datos (que ya está limpio)
+      const extraCostUsd = Number(v.additional_cost_usd) || 0;
 
-      if (variantCostUsd > baseCostUsd) {
-        // Hay un costo adicional real para esta variante
-        const extraCostUsd = variantCostUsd - baseCostUsd;
-        const extraCostLocal = extraCostUsd * exchangeRate * 1.19; // Convertimos sumando el IVA
+      if (extraCostUsd > 0) {
+        // Si hay costo adicional, lo pasamos a CLP sumando el IVA
+        const extraCostLocal = extraCostUsd * exchangeRate * 1.19; 
         v.calculated_price_local = getPsychologicalPrice(baseSuggested + extraCostLocal);
       } else {
-        // Cuesta lo mismo o menos, usamos el precio sugerido intacto
+        // Cuesta lo mismo, usamos el precio sugerido intacto
         v.calculated_price_local = getPsychologicalPrice(baseSuggested);
       }
 
+      // Calculamos cuál es la variante más barata para mostrar en portada
+      // ⚡ FIX: Atrapamos también el ID (v.id) o el SKU (v.ali_sku_id) de esta variante
       if (v.calculated_price_local > 0 && v.calculated_price_local < minVariantPrice) {
         minVariantPrice = v.calculated_price_local;
+        defaultVariantId = v.id || v.ali_sku_id; 
       }
 
       return v;
     });
   }
 
-  // 2. PUBLICAR EN PORTADA EL MENOR PRECIO
+  // 2. PUBLICAR EN PORTADA EL MENOR PRECIO Y LA VARIANTE
   if (minVariantPrice !== Infinity && minVariantPrice > 0) {
     product.calculated_min_price = minVariantPrice;
   } else {
     product.calculated_min_price = getPsychologicalPrice(baseSuggested); 
   }
+  
+  // ⚡ GUARDAMOS LA VARIANTE POR DEFECTO PARA EL QUICK ADD
+  product.default_variant_id = defaultVariantId;
 
   // 3. PRECIO TACHADO Y DESCUENTO
   const comparePrice = Number(product.compare_at_price) || 0;

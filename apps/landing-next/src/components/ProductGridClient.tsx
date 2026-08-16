@@ -1,6 +1,9 @@
+// src/components/ProductGridClient.tsx
 'use client';
-import { useState, useMemo } from 'react';
+
+import { useState, useMemo, useRef, useEffect } from 'react';
 import ProductCard from './ui/ProductCard';
+import { ChevronLeft, ChevronRight } from 'lucide-react'; // ⚡ Importamos los iconos
 
 interface ProductGridProps {
   products: any[];
@@ -10,12 +13,16 @@ interface ProductGridProps {
 export default function ProductGridClient({ products, countryCode }: ProductGridProps) {
   const [selectedCategory, setSelectedCategory] = useState<string>('Todos');
 
+  // ⚡ Estados y Referencias para el scroll de las categorías
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const [showLeftArrow, setShowLeftArrow] = useState(false);
+  const [showRightArrow, setShowRightArrow] = useState(true);
+
   const categories = useMemo(() => {
     if (!products) return [];
     const uniqueCats = new Set<string>();
     
     products.forEach(p => {
-      // ⚡ Búsqueda profunda de la categoría
       const catName = p.category_name || (p.category && p.category.name) || (typeof p.category === 'string' ? p.category : null) || 'Otros';
       uniqueCats.add(catName);
     });
@@ -31,6 +38,28 @@ export default function ProductGridClient({ products, countryCode }: ProductGrid
     });
   }, [products, selectedCategory]);
 
+  // ⚡ Lógica de control de las flechas
+  const handleScroll = () => {
+    if (scrollContainerRef.current) {
+      const { scrollLeft, scrollWidth, clientWidth } = scrollContainerRef.current;
+      setShowLeftArrow(scrollLeft > 0);
+      setShowRightArrow(Math.ceil(scrollLeft) < scrollWidth - clientWidth - 10);
+    }
+  };
+
+  useEffect(() => {
+    handleScroll(); // Revisamos al montar
+    window.addEventListener('resize', handleScroll);
+    return () => window.removeEventListener('resize', handleScroll);
+  }, [categories]); // También se recalcula si cambian las categorías
+
+  const scroll = (direction: 'left' | 'right') => {
+    if (scrollContainerRef.current) {
+      const scrollAmount = direction === 'left' ? -300 : 300;
+      scrollContainerRef.current.scrollBy({ left: scrollAmount, behavior: 'smooth' });
+    }
+  };
+
   if (!products || products.length === 0) return (
     <div className="text-center py-20 border border-dashed border-slate-800 rounded-xl">
       <p className="text-slate-500 font-bold uppercase tracking-widest text-xs">Buscando Winners para {countryCode}...</p>
@@ -42,11 +71,26 @@ export default function ProductGridClient({ products, countryCode }: ProductGrid
       
       {/* --- NAVEGACIÓN DE CATEGORÍAS TIPO PILLS (CHIPS) --- */}
       {categories.length > 1 && (
-        <div className="relative w-full">
-          {/* ⚡ Fade lateral: Da una pista visual en mobile de que se puede hacer scroll */}
+        <div className="relative w-full group">
+          
+          {/* ⚡ FLECHA IZQUIERDA (Desktop) */}
+          {showLeftArrow && (
+            <button
+              onClick={() => scroll('left')}
+              className="hidden md:flex absolute left-0 top-0 bottom-4 z-20 w-16 items-center justify-start pl-1 bg-gradient-to-r from-[#020617] via-[#020617]/90 to-transparent text-slate-400 hover:text-violet-400 transition-colors"
+            >
+              <ChevronLeft className="w-6 h-6 drop-shadow-md" />
+            </button>
+          )}
+
+          {/* Fade lateral: Da una pista visual en mobile de que se puede hacer scroll */}
           <div className="absolute right-0 top-0 bottom-4 w-12 bg-gradient-to-l from-[#020617] to-transparent z-10 pointer-events-none lg:hidden"></div>
           
-          <div className="flex gap-3 overflow-x-auto pb-4 pt-2 snap-x scroll-smooth [&::-webkit-scrollbar]:hidden px-1">
+          <div 
+            ref={scrollContainerRef}
+            onScroll={handleScroll}
+            className="flex gap-3 overflow-x-auto pb-4 pt-2 snap-x scroll-smooth [&::-webkit-scrollbar]:hidden px-1"
+          >
             {categories.map((cat) => {
               const isSelected = selectedCategory === cat;
 
@@ -67,6 +111,17 @@ export default function ProductGridClient({ products, countryCode }: ProductGrid
               );
             })}
           </div>
+
+          {/* ⚡ FLECHA DERECHA (Desktop) */}
+          {showRightArrow && (
+            <button
+              onClick={() => scroll('right')}
+              className="hidden md:flex absolute right-0 top-0 bottom-4 z-20 w-20 items-center justify-end pr-1 bg-gradient-to-l from-[#020617] via-[#020617]/90 to-transparent text-slate-400 hover:text-violet-400 transition-colors"
+            >
+              <ChevronRight className="w-6 h-6 drop-shadow-md" />
+            </button>
+          )}
+
         </div>
       )}
 

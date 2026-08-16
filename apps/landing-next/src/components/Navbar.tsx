@@ -1,7 +1,7 @@
 // src/components/Navbar.tsx
 'use client';
 
-import { Zap, ShoppingBag, Search, ShieldCheck, Loader2 } from 'lucide-react';
+import { Zap, ShoppingBag, Search, ShieldCheck, Loader2, ChevronRight, ChevronLeft } from 'lucide-react';
 import Link from 'next/link';
 import { useState, useEffect, useRef } from 'react';
 import { useCartStore } from '@/store/cartStore'; 
@@ -32,6 +32,11 @@ export default function Navbar({ countryCode = 'CL' }: NavbarProps) {
   const [showDropdown, setShowDropdown] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
 
+  // ⚡ Estados y Referencias para el Carrusel de Categorías
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const [showLeftArrow, setShowLeftArrow] = useState(false);
+  const [showRightArrow, setShowRightArrow] = useState(true);
+
   useEffect(() => setIsMounted(true), []);
 
   // ⚡ Lógica "Debounce" para el buscador
@@ -46,9 +51,7 @@ export default function Navbar({ countryCode = 'CL' }: NavbarProps) {
       setIsSearching(true);
       setShowDropdown(true);
       try {
-        // Llamaremos a un nuevo endpoint en el API Gateway
-       const res = await fetch(`/api/search?q=${encodeURIComponent(searchQuery)}&country=${countryCode}`);
-        
+        const res = await fetch(`/api/search?q=${encodeURIComponent(searchQuery)}&country=${countryCode}`);
         if (res.ok) {
           const data = await res.json();
           setSearchResults(data);
@@ -58,7 +61,7 @@ export default function Navbar({ countryCode = 'CL' }: NavbarProps) {
       } finally {
         setIsSearching(false);
       }
-    }, 400); // Espera 400ms después de que el usuario deja de escribir
+    }, 400);
 
     return () => clearTimeout(timer);
   }, [searchQuery, countryCode]);
@@ -73,6 +76,28 @@ export default function Navbar({ countryCode = 'CL' }: NavbarProps) {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  // ⚡ Funciones para el Carrusel de Categorías
+  const handleScroll = () => {
+    if (scrollContainerRef.current) {
+      const { scrollLeft, scrollWidth, clientWidth } = scrollContainerRef.current;
+      setShowLeftArrow(scrollLeft > 0);
+      setShowRightArrow(scrollLeft < scrollWidth - clientWidth - 10);
+    }
+  };
+
+  useEffect(() => {
+    handleScroll();
+    window.addEventListener('resize', handleScroll);
+    return () => window.removeEventListener('resize', handleScroll);
+  }, []);
+
+  const scroll = (direction: 'left' | 'right') => {
+    if (scrollContainerRef.current) {
+      const scrollAmount = direction === 'left' ? -300 : 300;
+      scrollContainerRef.current.scrollBy({ left: scrollAmount, behavior: 'smooth' });
+    }
+  };
 
   return (
     <>
@@ -174,18 +199,47 @@ export default function Navbar({ countryCode = 'CL' }: NavbarProps) {
 
         </div>
         
-        {/* CATEGORÍAS SUB-NAV */}
-        <div className="bg-slate-900/80 border-t border-slate-800/80 overflow-x-auto [&::-webkit-scrollbar]:hidden">
-          <div className="container mx-auto px-4 h-9 flex items-center gap-6 text-[10px] md:text-[11px] font-bold text-slate-400 uppercase tracking-wider min-w-max">
-            <a href="#tendencias" className="hover:text-white transition-colors">{t.trends}</a>
-            <a href="#como-funciona" className="hover:text-white transition-colors">{t.howItWorks}</a>
-            <a href="#garantia" className="hover:text-white transition-colors flex items-center gap-1">
-              <ShieldCheck className="w-3.5 h-3.5" /> {t.warranty}
-            </a>
-            <span className="text-violet-400 flex items-center gap-1 ml-auto">
-              <Zap className="w-3.5 h-3.5 fill-current" /> Envíos Gratis a Chile
-            </span>
+        {/* ⚡ CATEGORÍAS SUB-NAV (AHORA SÍ DENTRO DEL RETURN) */}
+        <div className="relative bg-slate-900/80 border-t border-slate-800/80 group">
+          
+          {/* FLECHA IZQUIERDA */}
+          {showLeftArrow && (
+            <button
+              onClick={() => scroll('left')}
+              className="hidden md:flex absolute left-0 top-0 bottom-0 z-10 w-12 items-center justify-start pl-2 bg-gradient-to-r from-slate-900 via-slate-900/90 to-transparent text-slate-400 hover:text-violet-400 transition-colors"
+            >
+              <ChevronLeft className="w-5 h-5 drop-shadow-md" />
+            </button>
+          )}
+
+          {/* CONTENEDOR CON SCROLL */}
+          <div 
+            ref={scrollContainerRef}
+            onScroll={handleScroll}
+            className="overflow-x-auto [&::-webkit-scrollbar]:hidden scroll-smooth"
+          >
+            <div className="container mx-auto px-4 h-9 flex items-center gap-6 text-[10px] md:text-[11px] font-bold text-slate-400 uppercase tracking-wider min-w-max">
+              <a href="#tendencias" className="hover:text-white transition-colors">{t.trends}</a>
+              <a href="#como-funciona" className="hover:text-white transition-colors">{t.howItWorks}</a>
+              <a href="#garantia" className="hover:text-white transition-colors flex items-center gap-1">
+                <ShieldCheck className="w-3.5 h-3.5" /> {t.warranty}
+              </a>
+              
+              <span className="text-violet-400 flex items-center gap-1 ml-auto md:pr-8">
+                <Zap className="w-3.5 h-3.5 fill-current" /> Envíos Gratis a Chile
+              </span>
+            </div>
           </div>
+
+          {/* FLECHA DERECHA */}
+          {showRightArrow && (
+            <button
+              onClick={() => scroll('right')}
+              className="hidden md:flex absolute right-0 top-0 bottom-0 z-10 w-16 items-center justify-end pr-2 bg-gradient-to-l from-slate-900 via-slate-900/90 to-transparent text-slate-400 hover:text-violet-400 transition-colors"
+            >
+              <ChevronRight className="w-5 h-5 drop-shadow-md" />
+            </button>
+          )}
         </div>
       </nav>
 

@@ -8,10 +8,14 @@ export const metadata: Metadata = {
     default: 'RavsStore | Gadgets Premium e Importación Directa en Chile',
     template: '%s | RavsStore'
   },
-  description: 'Descubre las últimas tendencias tecnológicas globales con envío gratis a todo Chile. Calidad verificada por IA y respaldo local en la Región del Biobío.',
+  description: 'Descubre las últimas tendencias tecnológicas globales con envío gratis a todo Chile. Calidad verificada por IA. Compra segura con Webpay y Mercado Pago. ¡Explora gadgets virales y productos de importación directa hoy!',
   keywords: ['tecnología chile', 'gadgets virales', 'importación directa', 'compras seguras webpay', 'tienda tech biobio', 'despacho gratis'],
   authors: [{ name: 'RavsStore Team' }],
   creator: 'RavsStore',
+  icons: {
+    icon: '/assets/favicon/favicon.svg',
+    apple: '/assets/favicon/apple-touch-icon.png',
+  },
   openGraph: {
     type: 'website',
     locale: 'es_CL',
@@ -55,27 +59,30 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           }}
         />
         
-        <Script 
-          src="https://sdk.mercadopago.com/js/v2" 
-          strategy="afterInteractive" 
-        />
-
-        {/* Meta Pixel - UNA SOLA VEZ */}
+       
+        {/* Meta Pixel - CORREGIDO PARA EVITAR SSR RUNTIME ERROR */}
         {pixelId && (
-          <Script id="fb-pixel" strategy="afterInteractive">
-            {`
-              !function(f,b,e,v,n,t,s)
-              {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
-              n.callMethod.apply(n,arguments):n.queue.push(arguments)};
-              if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
-              n.queue=[];t=b.createElement(e);t.async=!0;
-              t.src=v;s=b.getElementsByTagName(e)[0];
-              s.parentNode.insertBefore(t,s)}(window, document,'script',
-              'https://connect.facebook.net/en_US/fbevents.js');
-              fbq('init', '${pixelId}');
-              fbq('track', 'PageView');
-            `}
-          </Script>
+          <>
+            <Script
+              id="fb-pixel-base"
+              src="https://facebook.net"
+              strategy="afterInteractive"
+            />
+            <Script id="fb-pixel-init" strategy="afterInteractive">
+              {`
+                window.fbq = window.fbq || function() {
+                  (window.fbq.q = window.fbq.q || []).push(arguments);
+                };
+                window._fbq = window._fbq || window.fbq;
+                fbq.push = fbq;
+                fbq.loaded = true;
+                fbq.version = '2.0';
+                fbq.queue = [];
+                fbq('init', '${pixelId}');
+                fbq('track', 'PageView');
+              `}
+            </Script>
+          </>
         )}
       </head>
       <body className="antialiased">
@@ -85,7 +92,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {children}
 
         <Script
-          src="https://www.googletagmanager.com/gtag/js?id=G-5KQSNBQZBV"
+          src="https://googletagmanager.com"
           strategy="afterInteractive"
         />
         <Script id="google-analytics" strategy="afterInteractive">

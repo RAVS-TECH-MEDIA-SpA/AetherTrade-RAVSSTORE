@@ -395,3 +395,31 @@ export const triggerAnalysis = async (req: Request, res: Response) => {
     res.status(502).json({ error: 'Fallo en la comunicación con el ecosistema Cloud.' });
   }
 };
+
+/**
+ * CRON Wrapper: Punto de entrada exclusivo para Google Cloud Scheduler
+ * Fuerza los límites (5 nichos, 15 límite) y requiere una contraseña secreta.
+ */
+export const cronTriggerAnalysis = async (req: Request, res: Response) => {
+  // 1. Verificación de Seguridad Básica
+  const cronSecret = req.headers['x-cron-secret'];
+  
+  // Debes definir CRON_SECRET en tus variables de entorno de Cloud Run
+  if (cronSecret !== process.env.CRON_SECRET) {
+    console.warn('🚨 [CRON] Intento de acceso no autorizado al trigger automático.');
+    return res.status(401).json({ error: 'No autorizado' });
+  }
+
+  console.log('⏰ [CRON] Ejecutando búsqueda automatizada programada...');
+
+  // 2. Sobrescribir el body con los parámetros forzados para el CRON
+  req.body = {
+    country: 'CL',
+    nicheLimit: 5,   // Forzamos 5 nichos
+    eliteLimit: 15,  // Forzamos límite de 15 por nicho
+    niches: ''       // Lo dejamos vacío para que Gemini los genere automáticamente
+  };
+
+  // 3. Reutilizamos tu función original pasándole la request modificada
+  return triggerAnalysis(req, res);
+};

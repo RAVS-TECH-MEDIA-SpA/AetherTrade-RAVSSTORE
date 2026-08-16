@@ -1,3 +1,4 @@
+// src/components/ui/ProductCard.tsx
 'use client';
 
 import Link from 'next/link';
@@ -36,6 +37,8 @@ export default function ProductCard({ product }: ProductCardProps) {
     addItem({
       id: String(internalId), 
       productId: String(internalId), 
+      // ⚡ FIX: Inyectamos la variante por defecto detectada por el motor de precios (evita el null)
+      variantId: product.default_variant_id ? String(product.default_variant_id) : undefined, 
       title: product.marketing_copy?.title_localized || product.title_original,
       price: currentPrice, 
       imageUrl: displayImage, 

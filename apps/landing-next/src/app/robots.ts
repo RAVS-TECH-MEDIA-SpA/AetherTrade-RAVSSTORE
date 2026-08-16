@@ -7,6 +7,6 @@ export default function robots(): MetadataRoute.Robots {
       allow: '/',
       disallow: ['/admin', '/api', '/checkout'], // Evitamos que indexe el panel o la API
     },
-    sitemap: 'https://ravstore.vercel.app/sitemap.xml',
+    sitemap: 'https://ravsstore.com/sitemap.xml',
   };
 }

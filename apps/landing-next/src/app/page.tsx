@@ -5,9 +5,10 @@ import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import TrustSection from '@/components/TrustSection';
 import ProductGridClient from '@/components/ProductGridClient';
+import ProductCarousel from '@/components/ProductCarousel';
 import { HowItWorks } from '@/components/ui/HowItWorks';
 import { Warranty } from '@/components/ui/Warranty';
-import { processProductPricing } from '@/lib/api'; // ⚡ Importamos el motor centralizado
+import { processProductPricing } from '@/lib/api'; 
 
 const countryConfigs: Record<string, { name: string; flag: string; accent: string }> = {
   CL: { name: 'Chile', flag: '🇨🇱', accent: 'from-blue-500 to-red-500' },
@@ -32,7 +33,6 @@ async function getWinners(countryCode: string) {
       products = await fallbackRes.json();
     }
 
-    // ⚡ Sincronizamos la portada aplicando exactamente el mismo motor de precios
     return products.map(processProductPricing);
   } catch (error) {
     console.error("❌ Error consumiendo API Gateway en Page:", error);
@@ -47,11 +47,25 @@ export default async function HomePage() {
 
   const products = await getWinners(countryCode);
 
+  // ⚡ LÓGICA DE DISTRIBUCIÓN DE PRODUCTOS
+  const GRID_LIMIT = 20; 
+  const mainGridProducts = products.slice(0, GRID_LIMIT);
+  const remainingProducts = products.slice(GRID_LIMIT);
+
+  const productsByCategory = remainingProducts.reduce((acc: any, p: any) => {
+    const catName = p.category_name || (p.category && p.category.name) || (typeof p.category === 'string' ? p.category : null) || 'Otras Novedades';
+    
+    if (!acc[catName]) {
+      acc[catName] = [];
+    }
+    acc[catName].push(p);
+    return acc;
+  }, {});
+
   return (
-    <div className="min-h-screen bg-[#020617] text-white selection:bg-violet-500/30 scroll-smooth">
+    <div className="min-h-screen bg-[#020617] text-white selection:bg-violet-500/30 scroll-smooth overflow-x-hidden">
       <Navbar countryCode={countryCode} />
       
-      {/* ⚡ FIX: Aumentamos el padding-top (pt-40 para mobile) para darle aire bajo el Navbar */}
       <main className="pt-40 md:pt-44">
         <section className="container mx-auto px-4 mb-8">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 md:gap-4">
@@ -121,12 +135,30 @@ export default async function HomePage() {
               Recomendados
             </h2>
             <span className="text-slate-500 text-[10px] md:text-xs font-bold uppercase tracking-wider">
-              {products.length} Resultados
+              Top {mainGridProducts.length}
             </span>
           </div>
           
-          <ProductGridClient products={products} countryCode={countryCode} />
+          <ProductGridClient products={mainGridProducts} countryCode={countryCode} />
         </section>
+
+        {Object.keys(productsByCategory).length > 0 && (
+          <section className="flex flex-col gap-8 md:gap-10 pb-16">
+            {Object.keys(productsByCategory).map((categoryName) => {
+              const categoryProducts = productsByCategory[categoryName];
+              
+              if (categoryProducts.length < 3) return null;
+
+              return (
+                <ProductCarousel 
+                  key={categoryName} 
+                  title={categoryName} 
+                  products={categoryProducts} 
+                />
+              );
+            })}
+          </section>
+        )}
 
         <HowItWorks />
         <Warranty />
