@@ -47,20 +47,31 @@ export default async function HomePage() {
 
   const products = await getWinners(countryCode);
 
-  // ⚡ LÓGICA DE DISTRIBUCIÓN DE PRODUCTOS
-  const GRID_LIMIT = 20; 
-  const mainGridProducts = products.slice(0, GRID_LIMIT);
-  const remainingProducts = products.slice(GRID_LIMIT);
+  // ============================================================================
+  // ⚡ LÓGICA DE DISTRIBUCIÓN ESTRICTA (10 ARRIBA, RESTO ABAJO)
+  // ============================================================================
+  
+  const getCatName = (p: any) => p.category_name || (p.category && p.category.name) || (typeof p.category === 'string' ? p.category : null) || 'Otras Novedades';
+  
+  // 1. Extraemos TODAS las categorías únicas
+  const allUniqueCategories = Array.from(new Set(products.map(getCatName))) as string[];
 
-  const productsByCategory = remainingProducts.reduce((acc: any, p: any) => {
-    const catName = p.category_name || (p.category && p.category.name) || (typeof p.category === 'string' ? p.category : null) || 'Otras Novedades';
-    
-    if (!acc[catName]) {
-      acc[catName] = [];
-    }
-    acc[catName].push(p);
-    return acc;
-  }, {});
+  // 2. Exactamente las primeras 10 para la barra de navegación
+  const top10Categories = allUniqueCategories.slice(0, 10);
+  
+  // 3. De la 11 en adelante para los carruseles
+  const remainingCategories = allUniqueCategories.slice(10);
+
+  // 4. Productos de las 10 categorías principales
+  const mainGridProducts = products.filter((p: any) => top10Categories.includes(getCatName(p)));
+
+  // 5. Preparamos la data para los carruseles (eliminando el límite estricto de 3)
+  const carouselsData = remainingCategories.map(catName => {
+    return {
+      categoryName: catName,
+      products: products.filter((p: any) => getCatName(p) === catName)
+    };
+  }).filter(c => c.products.length > 0); // Solo filtramos si no tiene NINGÚN producto
 
   return (
     <div className="min-h-screen bg-[#020617] text-white selection:bg-violet-500/30 scroll-smooth overflow-x-hidden">
@@ -135,28 +146,28 @@ export default async function HomePage() {
               Recomendados
             </h2>
             <span className="text-slate-500 text-[10px] md:text-xs font-bold uppercase tracking-wider">
-              Top {mainGridProducts.length}
+              Top Destacados
             </span>
           </div>
           
-          <ProductGridClient products={mainGridProducts} countryCode={countryCode} />
+          {/* ⚡ FIX: Aquí le pasamos categoriesList para que la barra no se vuelva loca */}
+          <ProductGridClient 
+            products={mainGridProducts} 
+            categoriesList={top10Categories} 
+            countryCode={countryCode} 
+          />
         </section>
 
-        {Object.keys(productsByCategory).length > 0 && (
+        {/* ⚡ Renderizamos los N carruseles restantes */}
+        {carouselsData.length > 0 && (
           <section className="flex flex-col gap-8 md:gap-10 pb-16">
-            {Object.keys(productsByCategory).map((categoryName) => {
-              const categoryProducts = productsByCategory[categoryName];
-              
-              if (categoryProducts.length < 3) return null;
-
-              return (
-                <ProductCarousel 
-                  key={categoryName} 
-                  title={categoryName} 
-                  products={categoryProducts} 
-                />
-              );
-            })}
+            {carouselsData.map((carousel) => (
+              <ProductCarousel 
+                key={carousel.categoryName} 
+                title={carousel.categoryName} 
+                products={carousel.products} 
+              />
+            ))}
           </section>
         )}
 

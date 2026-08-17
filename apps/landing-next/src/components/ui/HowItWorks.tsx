@@ -1,3 +1,4 @@
+// src/components/ui/HowItWorks.tsx
 import { Globe, Cpu, Truck } from 'lucide-react';
 
 const steps = [
@@ -19,18 +20,19 @@ const steps = [
 ];
 
 export const HowItWorks = () => (
-  <section id="como-funciona" className="py-32 bg-[#020617] border-t border-white/5">
+  <section id="como-funciona" className="py-20 md:py-32 bg-[#020617] border-t border-white/5">
     <div className="max-w-7xl mx-auto px-6">
-      <div className="text-center mb-20">
+      <div className="text-center mb-12 md:mb-20">
         <h2 className="text-4xl lg:text-6xl font-black text-white italic uppercase tracking-tighter mb-4">
           Tecnología <span className="text-violet-500">Sin Fronteras</span>
         </h2>
         <p className="text-slate-500 font-bold tracking-widest uppercase text-[10px]">El estándar RavsStore para el mundo</p>
       </div>
 
-      <div className="grid md:grid-cols-3 gap-12">
+      {/* ⚡ FIX: Flex carrusel en mobile, Grid en desktop */}
+      <div className="flex md:grid md:grid-cols-3 gap-6 md:gap-12 overflow-x-auto snap-x snap-mandatory scroll-smooth [&::-webkit-scrollbar]:hidden pb-6 md:pb-0">
         {steps.map((step, i) => (
-          <div key={i} className="group p-10 rounded-[3rem] bg-slate-900/30 border border-white/5 hover:border-violet-500/30 transition-all duration-500">
+          <div key={i} className="snap-center shrink-0 w-[85%] sm:w-[45%] md:w-auto group p-8 md:p-10 rounded-[3rem] bg-slate-900/30 border border-white/5 hover:border-violet-500/30 transition-all duration-500">
             <div className="text-violet-500 mb-6 group-hover:scale-110 transition-transform duration-500">
               {step.icon}
             </div>

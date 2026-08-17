@@ -24,10 +24,17 @@ export default function ProductCarousel({ title, products }: ProductCarouselProp
   };
 
   useEffect(() => {
-    handleScroll();
+    // ⚡ FIX: 150ms de espera para que las tarjetas e imágenes se dibujen antes de medir
+    const timer = setTimeout(() => {
+      handleScroll();
+    }, 150);
+
     window.addEventListener('resize', handleScroll);
-    return () => window.removeEventListener('resize', handleScroll);
-  }, []);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('resize', handleScroll);
+    };
+  }, [products]); // ⚡ FIX: Agregamos `products` para que recalcule si cargan nuevos productos
 
   const scroll = (direction: 'left' | 'right') => {
     if (scrollContainerRef.current) {

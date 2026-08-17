@@ -3,42 +3,36 @@
 
 import { useState, useMemo, useRef, useEffect } from 'react';
 import ProductCard from './ui/ProductCard';
-import { ChevronLeft, ChevronRight } from 'lucide-react'; // ⚡ Importamos los iconos
+import { ChevronLeft, ChevronRight } from 'lucide-react'; 
 
 interface ProductGridProps {
   products: any[];
+  categoriesList: string[]; // ⚡ ESTO ES LO NUEVO: Recibe la lista estricta (10) desde el padre
   countryCode: string;
 }
 
-export default function ProductGridClient({ products, countryCode }: ProductGridProps) {
+export default function ProductGridClient({ products, categoriesList, countryCode }: ProductGridProps) {
   const [selectedCategory, setSelectedCategory] = useState<string>('Todos');
 
-  // ⚡ Estados y Referencias para el scroll de las categorías
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [showLeftArrow, setShowLeftArrow] = useState(false);
   const [showRightArrow, setShowRightArrow] = useState(true);
 
-  const categories = useMemo(() => {
-    if (!products) return [];
-    const uniqueCats = new Set<string>();
-    
-    products.forEach(p => {
-      const catName = p.category_name || (p.category && p.category.name) || (typeof p.category === 'string' ? p.category : null) || 'Otros';
-      uniqueCats.add(catName);
-    });
-    
-    return ['Todos', ...Array.from(uniqueCats)];
-  }, [products]);
+  // ⚡ REEMPLAZAMOS LA LÓGICA ANTIGUA CON ESTA LÍNEA
+  // Ya no adivinamos las categorías, usamos las 10 exactas que nos mandó page.tsx
+  const tabs = ['Todos', ...(categoriesList || [])];
 
   const filteredProducts = useMemo(() => {
-    if (selectedCategory === 'Todos') return products;
+    if (selectedCategory === 'Todos') {
+      // ⚡ Limitamos la vista "Todos" a 24 productos (o 20) para no hacer la grilla infinita
+      return products.slice(0, 24); 
+    }
     return products.filter(p => {
-      const catName = p.category_name || (p.category && p.category.name) || (typeof p.category === 'string' ? p.category : null) || 'Otros';
+      const catName = p.category_name || (p.category && p.category.name) || (typeof p.category === 'string' ? p.category : null) || 'Otras Novedades';
       return catName === selectedCategory;
     });
   }, [products, selectedCategory]);
 
-  // ⚡ Lógica de control de las flechas
   const handleScroll = () => {
     if (scrollContainerRef.current) {
       const { scrollLeft, scrollWidth, clientWidth } = scrollContainerRef.current;
@@ -48,10 +42,16 @@ export default function ProductGridClient({ products, countryCode }: ProductGrid
   };
 
   useEffect(() => {
-    handleScroll(); // Revisamos al montar
+    const timer = setTimeout(() => {
+      handleScroll(); 
+    }, 150);
+
     window.addEventListener('resize', handleScroll);
-    return () => window.removeEventListener('resize', handleScroll);
-  }, [categories]); // También se recalcula si cambian las categorías
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('resize', handleScroll);
+    };
+  }, [categoriesList]); // ⚡ Escuchamos el categoriesList 
 
   const scroll = (direction: 'left' | 'right') => {
     if (scrollContainerRef.current) {
@@ -69,11 +69,9 @@ export default function ProductGridClient({ products, countryCode }: ProductGrid
   return (
     <div className="space-y-6 md:space-y-8">
       
-      {/* --- NAVEGACIÓN DE CATEGORÍAS TIPO PILLS (CHIPS) --- */}
-      {categories.length > 1 && (
+      {tabs.length > 1 && (
         <div className="relative w-full group">
           
-          {/* ⚡ FLECHA IZQUIERDA (Desktop) */}
           {showLeftArrow && (
             <button
               onClick={() => scroll('left')}
@@ -83,7 +81,6 @@ export default function ProductGridClient({ products, countryCode }: ProductGrid
             </button>
           )}
 
-          {/* Fade lateral: Da una pista visual en mobile de que se puede hacer scroll */}
           <div className="absolute right-0 top-0 bottom-4 w-12 bg-gradient-to-l from-[#020617] to-transparent z-10 pointer-events-none lg:hidden"></div>
           
           <div 
@@ -91,7 +88,8 @@ export default function ProductGridClient({ products, countryCode }: ProductGrid
             onScroll={handleScroll}
             className="flex gap-3 overflow-x-auto pb-4 pt-2 snap-x scroll-smooth [&::-webkit-scrollbar]:hidden px-1"
           >
-            {categories.map((cat) => {
+            {/* ⚡ Iteramos sobre 'tabs' en lugar de calcular 'categories' */}
+            {tabs.map((cat) => {
               const isSelected = selectedCategory === cat;
 
               return (
@@ -112,7 +110,6 @@ export default function ProductGridClient({ products, countryCode }: ProductGrid
             })}
           </div>
 
-          {/* ⚡ FLECHA DERECHA (Desktop) */}
           {showRightArrow && (
             <button
               onClick={() => scroll('right')}
@@ -125,7 +122,6 @@ export default function ProductGridClient({ products, countryCode }: ProductGrid
         </div>
       )}
 
-      {/* --- GRILLA DE PRODUCTOS --- */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2 md:gap-4">
         {filteredProducts.map((product) => (
           <ProductCard key={product.id} product={product} />

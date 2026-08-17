@@ -1,3 +1,4 @@
+// src/components/ui/ProductGalleryWrapper.tsx
 'use client';
 
 import { useState, useMemo, useEffect } from 'react';
@@ -51,6 +52,10 @@ export default function ProductGalleryWrapper({ product }: any) {
     style: 'currency', currency: 'CLP'
   }).format(unitPrice * quantity);
 
+  const formattedOldPrice = new Intl.NumberFormat('es-CL', {
+    style: 'currency', currency: 'CLP'
+  }).format(product.calculated_old_price || 0);
+
   const handleAddToCart = () => {
     if (product.variants?.length > 0 && !selectedVariantId) {
       alert("Por favor selecciona una configuración disponible.");
@@ -88,45 +93,77 @@ export default function ProductGalleryWrapper({ product }: any) {
   const marketing = product.marketing_copy || {};
 
   return (
-    <div className="min-h-screen bg-black text-white">
+    // ⚡ FIX: pb-28 lg:pb-0 para que el footer no quede tapado por la barra flotante
+    <div className="min-h-screen bg-black text-white relative pb-28 lg:pb-0">
       <div className="fixed top-0 left-0 right-0 z-[100]">
         <Navbar countryCode={'CL'}  />
       </div>
 
-      <main className="max-w-7xl mx-auto px-6 pt-36 md:pt-40 pb-20">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-20 items-start">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 pt-28 md:pt-40 pb-16 md:pb-20">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-20 items-start">
           
-          {/* COLUMNA IZQUIERDA: GALERÍA */}
-          <div className="lg:col-span-5 space-y-6 lg:sticky lg:top-36 z-10 flex flex-col">
-            <div className="aspect-square rounded-[2rem] md:rounded-[3rem] overflow-hidden bg-slate-900 border border-white/5 shadow-2xl">
+          {/* ========================================================= */}
+          {/* COLUMNA IZQUIERDA: GALERÍA (Y CABECERA MOBILE)            */}
+          {/* ========================================================= */}
+          <div className="lg:col-span-5 space-y-4 lg:space-y-6 lg:sticky lg:top-36 z-10 flex flex-col">
+            
+            {/* 📱 MOBILE ONLY: Cabecera Invertida (Categoría, Título, Precio) */}
+            <div className="flex flex-col lg:hidden space-y-2 mb-2 pt-2">
+              <span className="bg-violet-600/10 text-violet-400 text-[10px] font-black px-3 py-1 rounded-full border border-violet-600/20 uppercase tracking-widest w-max">
+                {product.category_name || 'Componente Especializado'}
+              </span>
+              <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white uppercase italic leading-tight">
+                {marketing.title_localized || product.title_original}
+              </h1>
+              <div className="flex items-end gap-3 mt-1">
+                <span className="text-3xl font-black text-white tabular-nums tracking-tighter">{formattedTotal}</span>
+                {product.calculated_old_price > 0 && (
+                  <span className="text-sm text-slate-500 line-through mb-1 decoration-rose-500/50">
+                    {formattedOldPrice}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Imagen Principal */}
+            <div className="aspect-square rounded-[2rem] md:rounded-[3rem] overflow-hidden bg-slate-900 border border-white/5 shadow-2xl relative">
               <img 
                 src={activeImage} 
                 className="w-full h-full object-cover transition-all duration-500" 
                 alt="Product" 
               />
+              {/* Etiqueta de descuento opcional */}
+              {product.calculated_discount_percent > 0 && (
+                <div className="absolute top-4 left-4 bg-rose-600 text-white text-[10px] font-black px-3 py-1.5 rounded-full uppercase tracking-widest shadow-lg">
+                  -{product.calculated_discount_percent}% OFF
+                </div>
+              )}
             </div>
             
-            {/* Si quieres mostrar miniaturas del bucket, puedes hacerlo aquí iterando cloudImages */}
+            {/* Miniaturas: Carrusel Horizontal en Mobile, Grid en Desktop */}
             {cloudImages.length > 1 && (
-              <div className="grid grid-cols-4 gap-3">
+              <div className="flex lg:grid lg:grid-cols-4 gap-3 overflow-x-auto snap-x snap-mandatory [&::-webkit-scrollbar]:hidden pb-2 pt-1">
                 {cloudImages.map((img: string, idx: number) => (
                    <button 
                      key={idx}
                      onClick={() => setActiveImage(img)}
-                     className={`aspect-square rounded-xl overflow-hidden border-2 ${activeImage === img ? 'border-violet-500' : 'border-transparent'}`}
+                     className={`snap-center shrink-0 w-20 h-20 lg:w-auto lg:h-auto aspect-square rounded-xl overflow-hidden border-2 transition-colors ${activeImage === img ? 'border-violet-500' : 'border-transparent'}`}
                    >
-                     <img src={img} className="w-full h-full object-cover" />
+                     <img src={img} className="w-full h-full object-cover mix-blend-multiply bg-white" />
                    </button>
                 ))}
               </div>
             )}
           </div>
 
-          {/* COLUMNA DERECHA */}
-          <div className="lg:col-span-7 flex flex-col space-y-8 md:space-y-10">
+          {/* ========================================================= */}
+          {/* COLUMNA DERECHA: INFORMACIÓN Y CTA                        */}
+          {/* ========================================================= */}
+          <div className="lg:col-span-7 flex flex-col space-y-6 md:space-y-10 mt-2 lg:mt-0">
             
-            <div className="space-y-4">
-              <span className="bg-violet-600/10 text-violet-400 text-[9px] md:text-[10px] font-black px-3 py-1 rounded-full border border-violet-600/20 uppercase tracking-widest inline-block">
+            {/* 💻 DESKTOP ONLY: Cabecera Original */}
+            <div className="hidden lg:flex flex-col space-y-4">
+              <span className="bg-violet-600/10 text-violet-400 text-[10px] font-black px-3 py-1 rounded-full border border-violet-600/20 uppercase tracking-widest inline-block w-max">
                 {product.category_name || 'Componente Especializado'}
               </span>
               <h1 className="text-3xl md:text-4xl lg:text-5xl font-bold tracking-tight text-white uppercase italic leading-none">
@@ -134,8 +171,9 @@ export default function ProductGalleryWrapper({ product }: any) {
               </h1>
             </div>
 
+            {/* Selector de Variantes */}
             {product.variants?.length > 0 && (
-              <div className="bg-slate-900/40 border border-white/5 rounded-3xl p-5 md:p-6">
+              <div className="bg-slate-900/40 border border-white/5 rounded-2xl md:rounded-3xl p-4 md:p-6">
                 <VariantSelector 
                   variants={product.variants} 
                   selectedVariant={variant} 
@@ -144,21 +182,36 @@ export default function ProductGalleryWrapper({ product }: any) {
               </div>
             )}
 
-            <div className="bg-slate-900/60 border border-white/5 rounded-[2rem] md:rounded-[3rem] p-6 md:p-10 space-y-6 md:space-y-8 shadow-2xl backdrop-blur-xl relative overflow-hidden">
+            {/* 📱 MOBILE ONLY: Hook de Marketing */}
+            {marketing.hook && (
+              <div className="lg:hidden bg-violet-600/10 border border-violet-500/20 rounded-xl px-4 py-3 text-center mb-2">
+                <span className="text-violet-300 text-[11px] font-bold tracking-wide">
+                  ✨ {marketing.hook}
+                </span>
+              </div>
+            )}
+
+            {/* 💻 DESKTOP ONLY: Caja de Precio y CTA Gigante */}
+            <div className="hidden lg:block bg-slate-900/60 border border-white/5 rounded-[3rem] p-10 space-y-8 shadow-2xl backdrop-blur-xl relative overflow-hidden">
               {marketing.hook && (
-                <div className="absolute top-0 left-0 right-0 bg-violet-600/20 border-b border-violet-500/30 px-4 md:px-6 py-2 text-center">
-                  <span className="text-violet-300 text-[10px] md:text-sm font-bold tracking-wide">
+                <div className="absolute top-0 left-0 right-0 bg-violet-600/20 border-b border-violet-500/30 px-6 py-2 text-center">
+                  <span className="text-violet-300 text-sm font-bold tracking-wide">
                     ✨ {marketing.hook}
                   </span>
                 </div>
               )}
 
-              <div className={`flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6 ${marketing.hook ? 'pt-6 md:pt-4' : ''}`}>
+              <div className={`flex items-center justify-between gap-6 ${marketing.hook ? 'pt-4' : ''}`}>
                 <div className="flex flex-col">
-                  <span className="text-[10px] font-black text-violet-400 uppercase tracking-widest mb-1 md:mb-2 italic">Precio de Oferta</span>
-                  <span className="text-5xl md:text-6xl lg:text-7xl font-black text-white tabular-nums tracking-tighter">{formattedTotal}</span>
+                  <span className="text-[10px] font-black text-violet-400 uppercase tracking-widest mb-2 italic">Precio de Oferta</span>
+                  <div className="flex items-end gap-3">
+                    <span className="text-7xl font-black text-white tabular-nums tracking-tighter">{formattedTotal}</span>
+                    {product.calculated_old_price > 0 && (
+                      <span className="text-xl text-slate-500 line-through mb-2 decoration-rose-500/50">{formattedOldPrice}</span>
+                    )}
+                  </div>
                 </div>
-                <div className="w-full sm:w-40">
+                <div className="w-40">
                   <QuantitySelector value={quantity} onChange={setQuantity} />
                 </div>
               </div>
@@ -166,7 +219,7 @@ export default function ProductGalleryWrapper({ product }: any) {
               <button 
                 onClick={handleAddToCart}
                 disabled={isAdded}
-                className={`w-full py-5 md:py-8 rounded-2xl font-black text-lg md:text-2xl shadow-xl uppercase tracking-tighter transition-all active:scale-95 ${
+                className={`w-full py-8 rounded-2xl font-black text-2xl shadow-xl uppercase tracking-tighter transition-all active:scale-95 ${
                   isAdded 
                   ? 'bg-emerald-500 text-white cursor-default shadow-emerald-500/20' 
                   : 'bg-violet-600 hover:bg-violet-500 text-white shadow-violet-900/50 hover:shadow-violet-600/40'
@@ -201,6 +254,28 @@ export default function ProductGalleryWrapper({ product }: any) {
           </div>
         </div>
       </main>
+
+      {/* ========================================================= */}
+      {/* 📱 STICKY BOTTOM BAR (SOLO MOBILE)                          */}
+      {/* ========================================================= */}
+      {/* ⚡ FIX: z-40 para que no tape al carrito al abrirse */}
+      <div className="fixed bottom-0 left-0 right-0 p-4 bg-[#020617]/95 backdrop-blur-xl border-t border-white/10 z-40 flex items-center gap-3 lg:hidden pb-6">
+        <div className="w-[110px] shrink-0">
+          <QuantitySelector value={quantity} onChange={setQuantity} />
+        </div>
+        <button 
+          onClick={handleAddToCart}
+          disabled={isAdded}
+          className={`flex-1 py-3.5 rounded-xl font-black text-[13px] uppercase tracking-wider transition-all active:scale-95 flex justify-center items-center gap-2 ${
+            isAdded 
+            ? 'bg-emerald-500 text-white cursor-default shadow-emerald-500/20' 
+            : 'bg-violet-600 hover:bg-violet-500 text-white shadow-lg shadow-violet-900/50'
+          }`}
+        >
+          {isAdded ? '¡Añadido!' : `Agregar • ${formattedTotal}`}
+        </button>
+      </div>
+
       <Footer countryCode={'CL'} />
     </div>
   );
