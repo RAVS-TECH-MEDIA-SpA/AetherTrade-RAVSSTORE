@@ -6,16 +6,16 @@ export class SerperService {
   async getLifestyleImages(query: string): Promise<string[]> {
     if (!this.apiKey) return [];
     try {
-      const cleanQuery = query.split(' ').slice(0, 4).join(' ');
+      const cleanQuery = query.split(' ').slice(0, 4).join(' ').replace(/["']/g, "").trim();
       
       const response = await axios.post(
         'https://google.serper.dev/images',
-        { q: `${cleanQuery} lifestyle high resolution product photography`, gl: 'us' },
+        { q: `${cleanQuery} high resolution product photography`, gl: 'us' },
         { headers: { 'X-API-KEY': this.apiKey, 'Content-Type': 'application/json' } }
       );
       return response.data.images?.slice(0, 4).map((img: any) => img.imageUrl) || [];
-    } catch (error) {
-      console.error('❌ Error en Serper (Images):', error);
+    } catch (error: any) {
+      console.error('❌ Error en Serper (Images):', error.response?.data || error.message);
       return [];
     }
   }
@@ -33,24 +33,26 @@ export class SerperService {
     try {
       console.log(`🔍 Video nativo no encontrado. Buscando en Serper para: "${cleanTitle}"`);
 
-      const primaryQuery = `"${cleanTitle}" product showcase shorts -review -unboxing`;
+      const primaryQuery = `${cleanTitle} product showcase shorts -review -unboxing`.trim();
       let videoLink = await this.executeVideoSearch(primaryQuery);
 
       if (!videoLink) {
-        const fallbackQuery = `official "${cleanTitle}" product feature demo -DIY -how-to`;
+        const fallbackQuery = `official ${cleanTitle} product feature demo -DIY -how-to`.trim();
         videoLink = await this.executeVideoSearch(fallbackQuery);
       }
 
       return videoLink;
-    } catch (error) {
-      console.error('❌ Error en Serper (Video):', error);
+    } catch (error: any) {
+      console.error('❌ Error en Serper (Video):', error.response?.data || error.message);
       return null;
     }
   }
 
   private cleanTitleForVideo(title: string): string {
+    if (!title) return "product";
     return title
       .replace(/(202[0-9]|New|Global|Original|Official|AliExpress|Dropshipping|Free Shipping|tituloseo|titulo)/gi, '')
+      .replace(/["']/g, "")
       .split(' ')
       .filter(word => word.length > 2)
       .slice(0, 4) 
@@ -58,18 +60,19 @@ export class SerperService {
       .trim();
   }
 
-  // ⚡ FIX: Búsqueda expandida a múltiples plataformas y URLs directas
+  // ⚡ FIX: Búsqueda expandida a múltiples plataformas y URLs directas con sanitización robusta
   private async executeVideoSearch(query: string): Promise<string | null> {
     try {
+      const sanitizedQuery = query.replace(/["']/g, "").trim();
       const response = await axios.post(
         'https://google.serper.dev/videos',
-        { q: query, gl: 'us', hl: 'en' },
+        { q: sanitizedQuery, gl: 'us', hl: 'en' },
         { headers: { 'X-API-KEY': this.apiKey, 'Content-Type': 'application/json' } }
       );
 
       const videos = response.data.videos || [];
       
-      console.log(`🔍 [DEBUG SERPER VIDEO] Resultados para "${query}": ${videos.length} encontrados.`);
+      console.log(`🔍 [DEBUG SERPER VIDEO] Resultados para "${sanitizedQuery}": ${videos.length} encontrados.`);
       
       if (videos.length === 0) return null;
 
@@ -80,13 +83,13 @@ export class SerperService {
         
         // Ampliamos el espectro a plataformas de video compatibles o MP4 directo
         const isValidSource = url.includes('youtube.com') || 
-                              url.includes('youtu.be') ||
-                              url.includes('tiktok.com') ||
-                              url.includes('vimeo.com') ||
-                              url.includes('dailymotion.com') ||
-                              url.includes('facebook.com/watch') ||
-                              url.includes('instagram.com/reel') ||
-                              url.endsWith('.mp4');
+                            url.includes('youtu.be') ||
+                            url.includes('tiktok.com') ||
+                            url.includes('vimeo.com') ||
+                            url.includes('dailymotion.com') ||
+                            url.includes('facebook.com/watch') ||
+                            url.includes('instagram.com/reel') ||
+                            url.endsWith('.mp4');
 
         const isNotTrash = !title.includes('review') && !title.includes('failed') && !title.includes('worst');
         
@@ -100,8 +103,8 @@ export class SerperService {
       }
       return finalLink;
       
-    } catch (error) {
-      console.error('❌ [DEBUG SERPER VIDEO] Error de red:', error);
+    } catch (error: any) {
+      console.error('❌ [DEBUG SERPER VIDEO] Error de red:', error.response?.data || error.message);
       return null;
     }
   }

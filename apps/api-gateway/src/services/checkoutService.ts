@@ -66,9 +66,6 @@ export class CheckoutService {
       const customerId = customerResult.rows[0].id;
 
       // ============================================================================
-      // ⚡ 2.5. GUARDAR LA DIRECCIÓN DE ENVÍO PARA AUTODS
-      // ============================================================================
-     // ============================================================================
       // ⚡ 2.5. GUARDAR LA DIRECCIÓN DE ENVÍO PARA AUTODS (CON DETALLES)
       // ============================================================================
       const insertAddressQuery = `
@@ -84,9 +81,10 @@ export class CheckoutService {
         shipping.city || 'Sin ciudad',
         shipping.state || 'Región Metropolitana',
         shipping.zip || '0000000',
-        shipping.details || null // ⚡ Se guarda el detalle o queda nulo si no lo llenaron
+        shipping.details || null 
       ]);
       const addressId = addressResult.rows[0].id;
+
       // ============================================================================
       // 3. Crear la Orden (⚡ AHORA CON EL ADDRESS_ID VINCULADO)
       // ============================================================================
@@ -97,46 +95,61 @@ export class CheckoutService {
       await dbClient.query(insertOrderQuery, [
         generatedOrderId, 
         customerId,
-        addressId, // ⚡ Se inyecta el ID generado en el paso 2.5
+        addressId, 
         mpResponse.id, 
         totalAmount,
         trackingData
       ]);
 
       // ============================================================================
-      // 4. EL CRUCE INTELIGENTE DE IDs Y VARIANTES
+      // 4. EL CRUCE INTELIGENTE DE IDs Y VARIANTES (AHORA SOPORTA GUÍAS DIGITALES)
       // ============================================================================
       for (const item of orderData.items) {
         let incomingId = String(item.productId || item.product_id || item.id).trim();
         let variantId = item.variantId || item.variant_id ? String(item.variantId || item.variant_id).trim() : null;
         
-        if (variantId === 'undefined' || variantId === 'null') variantId = null;
+        // ⚡ FIX APLICADO: Ignoramos la palabra 'digital' que manda el frontend
+        if (variantId === 'undefined' || variantId === 'null' || variantId === 'digital') {
+          variantId = null;
+        }
 
         if (incomingId.includes('-') && !incomingId.match(/^[0-9a-fA-F-]{36}$/)) {
           incomingId = incomingId.split('-')[0];
         }
 
         let realProductId = null;
+        let realGuideId = null; 
+        
         const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(incomingId);
 
         if (isUUID) {
-          const search = await dbClient.query('SELECT id FROM products WHERE id = $1 LIMIT 1', [incomingId]);
-          if (search.rows.length > 0) {
-            realProductId = search.rows[0].id;
+          // A) Intentamos buscar en productos físicos
+          const searchProd = await dbClient.query('SELECT id FROM products WHERE id = $1 LIMIT 1', [incomingId]);
+          
+          if (searchProd.rows.length > 0) {
+            realProductId = searchProd.rows[0].id;
           } else {
-            throw new Error(`El producto con UUID ${incomingId} no existe en la BD.`);
+            // B) Si no es producto físico, intentamos buscar en guías digitales
+            const searchGuide = await dbClient.query('SELECT id FROM guias_digitales WHERE id = $1 LIMIT 1', [incomingId]);
+            if (searchGuide.rows.length > 0) {
+              realGuideId = searchGuide.rows[0].id;
+            } else {
+              throw new Error(`El ítem con UUID ${incomingId} no existe ni en productos ni en guías digitales.`);
+            }
           }
         } else {
-          const search = await dbClient.query('SELECT id FROM products WHERE aliexpress_id = $1 LIMIT 1', [incomingId]);
-          if (search.rows.length > 0) {
-            realProductId = search.rows[0].id;
+          // Si no es UUID, es el ID de AliExpress
+          const searchAli = await dbClient.query('SELECT id FROM products WHERE aliexpress_id = $1 LIMIT 1', [incomingId]);
+          if (searchAli.rows.length > 0) {
+            realProductId = searchAli.rows[0].id;
           } else {
             throw new Error(`Producto con AliExpress ID ${incomingId} no encontrado.`);
           }
         }
 
+        // ⚡ FIX APLICADO: Solo buscamos variantes si enviaron variantId Y NO ES UNA GUÍA DIGITAL
         let realVariantId = null;
-        if (variantId) {
+        if (variantId && !realGuideId) {
           const isVariantUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(variantId);
           
           if (isVariantUUID) {
@@ -156,20 +169,22 @@ export class CheckoutService {
           }
         }
 
+        // ⚡ INSERCIÓN INTELIGENTE EN ORDER_ITEMS (Inyecta product_id O guia_id)
         await dbClient.query(`
-          INSERT INTO order_items (order_id, product_id, variant_id, quantity, unit_price_local, unit_cost_usd)
-          VALUES ($1, $2, $3, $4, $5, 0)
+          INSERT INTO order_items (order_id, product_id, guia_id, variant_id, quantity, unit_price_local, unit_cost_usd)
+          VALUES ($1, $2, $3, $4, $5, $6, 0)
         `, [
           generatedOrderId,
-          realProductId,
-          realVariantId,
+          realProductId, // Será NULL si es una guía
+          realGuideId,   // Será NULL si es un producto físico
+          realVariantId, // Será NULL si es guía o si no mandaron variante
           item.quantity,
           item.price
         ]);
       }
 
       await dbClient.query('COMMIT'); 
-      console.log("✅ Preferencia creada con éxito en Mercado Pago");
+      console.log("✅ Preferencia creada con éxito en Mercado Pago (Soporta carrito mixto)");
       return { 
         preferenceId: mpResponse.id, 
         init_point: mpResponse.init_point 

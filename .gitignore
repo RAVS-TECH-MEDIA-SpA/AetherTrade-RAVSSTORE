@@ -68,4 +68,4 @@ coverage/
 # 10. CREDENCIALES GCP Y OTROS
 secrets/
 env.yaml
-apikey.txt
+apikey.txtdeploy-all.sh

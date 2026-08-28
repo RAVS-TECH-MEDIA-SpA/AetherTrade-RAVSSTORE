@@ -54,23 +54,15 @@ export class ScoutingComponent implements OnInit {
 
   /**
    * TRIGGER: Dispara la ráfaga al Gateway.
-   * Eliminado el bloqueo estricto de > 100 créditos para permitir modo Admin.
+   * 
    */
   public triggerAnalysis(): void {
     // 1. Evitar doble disparo
     if (this.isProcessing) return;
-    
-    // 2. Alerta de Seguridad (Soft Warning)
-    if (this.totalEstimatedCredits > 150) {
-      const confirmacion = confirm(`⚠️ El estimado es de ${this.totalEstimatedCredits} créditos. ¿Deseas proceder con esta ráfaga de alto consumo?`);
-      if (!confirmacion) return;
-    }
+     
 
     this.isProcessing = true;
     const niches = this.nichosSeleccionados.join(';');
-    
-    this.addLog(`🚀 Scouting iniciado: ${niches || 'Generación Dinámica IA'}`, 'info');
-    this.addLog(`📊 Créditos Estimados: ${this.totalEstimatedCredits}`, 'system');
     
     this.dataService.triggerManualAnalysis(niches, 'CL', this.selectedNicheLimit, this.selectedEliteLimit)
       .subscribe({

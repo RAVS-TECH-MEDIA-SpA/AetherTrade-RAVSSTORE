@@ -2,8 +2,7 @@
 'use client';
 
 import Link from 'next/link';
-import { ShoppingCart, Star } from 'lucide-react';
-import { useCartStore } from '@/store/cartStore';
+import { Zap, Star } from 'lucide-react';
 
 interface ProductCardProps {
   product: any;
@@ -18,8 +17,6 @@ export default function ProductCard({ product }: ProductCardProps) {
     : [];
   const displayImage = cloudImages.length > 0 ? cloudImages[0] : product.image_url;
 
-  const addItem = useCartStore((state) => state.addItem);
-  
   const currentPrice = product.calculated_min_price ?? 0;
   const oldPrice = product.calculated_old_price ?? 0;
   const discountPercent = product.calculated_discount_percent ?? 0;
@@ -31,20 +28,6 @@ export default function ProductCard({ product }: ProductCardProps) {
   const formattedOldPrice = new Intl.NumberFormat('es-CL', {
     style: 'currency', currency: 'CLP'
   }).format(oldPrice);
-
-  const handleQuickAdd = (e: React.MouseEvent) => {
-    e.preventDefault(); 
-    addItem({
-      id: String(internalId), 
-      productId: String(internalId), 
-      // ⚡ FIX: Inyectamos la variante por defecto detectada por el motor de precios (evita el null)
-      variantId: product.default_variant_id ? String(product.default_variant_id) : undefined, 
-      title: product.marketing_copy?.title_localized || product.title_original,
-      price: currentPrice, 
-      imageUrl: displayImage, 
-      quantity: 1,
-    });
-  };
 
   return (
     <div className="group flex flex-col bg-slate-900 border border-slate-800 hover:border-violet-500 rounded-xl overflow-hidden transition-all duration-200 hover:shadow-xl hover:shadow-violet-900/20 h-full relative">
@@ -99,13 +82,13 @@ export default function ProductCard({ product }: ProductCardProps) {
       </Link>
 
       <div className="px-2 pb-2 md:px-3 md:pb-3 mt-1">
-        <button 
-          onClick={handleQuickAdd}
+        <Link 
+          href={`/products/${internalId}`}
           className="w-full flex items-center justify-center gap-2 bg-slate-800 text-white border border-slate-700 hover:bg-violet-600 hover:border-violet-500 hover:shadow-lg hover:shadow-violet-600/20 active:scale-95 rounded-lg py-2 md:py-2.5 text-[11px] md:text-xs font-bold uppercase tracking-wider transition-all"
         >
-          <ShoppingCart className="w-3.5 h-3.5 md:w-4 md:h-4" />
-          <span>Agregar</span>
-        </button>
+          <Zap className="w-3.5 h-3.5 md:w-4 md:h-4" />
+          <span>Descubrir Producto ⚡</span>
+        </Link>
       </div>
 
     </div>

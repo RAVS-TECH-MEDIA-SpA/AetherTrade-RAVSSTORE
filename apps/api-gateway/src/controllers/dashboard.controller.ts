@@ -322,17 +322,7 @@ export const triggerAnalysis = async (req: Request, res: Response) => {
     const effectiveNicheCount = finalNiches.length > 0 ? finalNiches.length : Number(nicheLimit || 5);
     const totalEstimatedCredits = effectiveNicheCount + (effectiveNicheCount * effectiveEliteLimit);
 
-    // 2. Validación de Cuota (Blindaje Pro) - Sube el límite si tu RapidAPI lo permite
-    if (totalEstimatedCredits > 300) {
-      // return res.status(403).json({ 
-      //   error: 'Configuración excede el límite de ráfaga Pro.',
-      //   estimated: totalEstimatedCredits,
-      //   limit: 300
-      // });
-      console.warn(`⚠️ [ALERTA DE CUOTA] El lote estima ${totalEstimatedCredits} créditos, lo cual es alto. Procediendo bajo riesgo del admin.`);
-    }
-
-    // --- [INTEGRACIÓN] GENERACIÓN CENTRALIZADA DE NICHOS ---
+       // --- [INTEGRACIÓN] GENERACIÓN CENTRALIZADA DE NICHOS ---
     if (finalNiches.length === 0) {
       console.log(`🤖 [GATEWAY] Solicitando ${effectiveNicheCount} nichos diversos a Gemini...`);
       
@@ -415,8 +405,8 @@ export const cronTriggerAnalysis = async (req: Request, res: Response) => {
   // 2. Sobrescribir el body con los parámetros forzados para el CRON
   req.body = {
     country: 'CL',
-    nicheLimit: 5,   // Forzamos 5 nichos
-    eliteLimit: 15,  // Forzamos límite de 15 por nicho
+    nicheLimit: 15,   // Forzamos  nichos
+    eliteLimit: 30,  // Forzamos límite por nicho
     niches: ''       // Lo dejamos vacío para que Gemini los genere automáticamente
   };
 

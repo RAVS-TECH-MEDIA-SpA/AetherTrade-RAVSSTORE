@@ -6,14 +6,14 @@ import { CompetitorService } from '../competitor.service.js';
 import { ScraperService } from '../services/scraper.service.js';
 import { MediaService } from '../services/media.services.js';
 import { SerperService } from '../services/serper.service.js';
-import { AliExpressService } from '../aliexpress.service.js';
+import { CJDropshippingService } from '../services/cj.service.js'; // ⚡ CJ INYECTADO
 import { MARKET_CONFIG } from '../config/constants.js';
 import { runDiscoveryTask } from '../workers/discovery.worker.js';
 
 export const pubsub = new PubSub({
   projectId: process.env.PUBSUB_PROJECT_ID || 'aethertrade-local'
 });
-const aliService = new AliExpressService();
+const cjService = new CJDropshippingService();
 const gemini = new GeminiService();
 const competitorService = new CompetitorService();
 const scraper = new ScraperService();
@@ -26,269 +26,174 @@ export async function listenForCandidates() {
   const topicName = 'candidate-analysis-2';
   const subscriptionName = 'candidate-analysis-sub-2';
 
-  // ==========================================
-  // 1. VALIDACIÓN E INICIALIZACIÓN DE PUBSUB
-  // ==========================================
   const topic = pubsub.topic(topicName);
   const [topicExists] = await topic.exists();
-  
-  if (!topicExists) {
-    console.log(`⚠️ Tópico no encontrado. Creando [${topicName}]...`);
-    await topic.create();
-  }
+  if (!topicExists) await topic.create();
 
   const subscriptionTest = topic.subscription(subscriptionName);
   const [subExists] = await subscriptionTest.exists();
-  
-  if (!subExists) {
-    console.log(`⚠️ Suscripción no encontrada. Creando [${subscriptionName}]...`);
-    await subscriptionTest.create();
-  }
+  if (!subExists) await subscriptionTest.create();
 
-  // ==========================================
-  // CONEXIÓN A LA SUSCRIPCIÓN
-  // ==========================================
-  const subscription = pubsub.subscription(subscriptionName, {
-    flowControl: { maxMessages: 1 }
+  const subscription = pubsub.subscription(subscriptionName, { flowControl: { maxMessages: 1 } });
+  
+  // ⚡ FIX CRÍTICO 1: Capturador de errores a nivel de suscripción para evitar que Node.js colapse con exit(1)
+  subscription.on('error', (error) => {
+    console.error('🚨 [Pub/Sub Error] Error en la conexión de la suscripción:', error);
   });
 
-  console.log("📡 [LISTENER] Analysis Worker V6.0 (Integrated Transactional Engine) | Cabrero listo.");
+  console.log("📡 [LISTENER] Analysis Worker V6.0 (CJ Engine) | Cabrero listo.");
 
   subscription.on('message', async (message) => {
-    console.log("📡 [LISTENER] Analysis Worker V6.0 (message) | Cabrero listo.", message.id);
-
-    // ==========================================
-    // 2. VALIDACIÓN DEL MENSAJE (EL "ESCUDO")
-    // ==========================================
     let payload;
     try {
       payload = JSON.parse(message.data.toString());
     } catch (error) {
-      console.log(`🗑️ [ERROR] Mensaje no es JSON válido. Descartando...`);
       message.ack();
       return;
     }
-      console.log(` [] payload:`, payload);
 
-    // =========================================================
-    // ⚡ FIX CONCURRENCIA: EL CANDADO SECUENCIAL
-    // =========================================================
     if (!payload.aliexpress_id || !payload.batchId) {
-      console.log(`🚜 [DISCOVERY SECUENCIAL] Iniciando búsqueda para: ${payload.niche}`);
       try {
         await runDiscoveryTask(payload.batchId, payload.niche, payload.targetCountry, payload.eliteLimit);
-      } catch (err) {
-        console.error(`❌ Error en Discovery para ${payload.niche}:`, err);
-      }
+      } catch (err) {}
       message.ack();
       return;
     }
     
-    // Extracción segura después de pasar el escudo
-    const { aliexpress_id, batchId, targetCountry } = payload;
+    const { aliexpress_id: pid, batchId, targetCountry } = payload;
     const targetLang = targetCountry === 'CL' ? 'Español' : 'Inglés';
     const config = MARKET_CONFIG[targetCountry as keyof typeof MARKET_CONFIG] || MARKET_CONFIG.CL;
-
-    const client = await pool.connect();
+    
+    let client; // ⚡ Declaramos el cliente afuera para asegurar su liberación en el finally
 
     try {
-      console.log(`\n🔍 [ANALISIS PROFUNDO] ID: ${aliexpress_id} | Batch: ${batchId}`);
+      client = await pool.connect(); // ⚡ Movido dentro del try para captura segura y evitar bucles
+      console.log(`\n🔍 [ANALISIS PROFUNDO] PID: ${pid} | Batch: ${batchId}`);
 
-      // 1. Obtención de Data Profunda (⚡ JITTER MASIVO ANTI-BAN GEMINI)
-      const minJitter = 10000;
-      const maxJitter = 120000; 
-      const jitterDelay = Math.floor(Math.random() * (maxJitter - minJitter + 1)) + minJitter;
-      
-      console.log(`⏳ [ANTI-BAN] Esperando ${Math.round(jitterDelay/1000)}s antes de procesar ID ${aliexpress_id}...`);
+      const jitterDelay = Math.floor(Math.random() * (120000 - 10000 + 1)) + 10000;
       await sleep(jitterDelay);
       
-      const detail = await aliService.getItemDetail(aliexpress_id);
+      // ⚡ Obtenemos el detalle desde CJ
+      const detail = await cjService.getProductDetail(pid);
       
-      if (!detail || detail.stock < 5) {
-        console.log(` ❌ ID ${aliexpress_id} descartado: Stock insuficiente o no encontrado.`);
+      if (!detail || !detail.variants || detail.variants.length === 0) {
+        console.log(` ❌ PID ${pid} descartado: Sin datos o variantes.`);
         message.ack();
         return; 
       }
 
-      // 2. Reglas Fiscales
       const rulesRes = await client.query(`
         SELECT t.vat_rate, er.rate_to_usd, t.gateway_fee_percent
-        FROM tax_rules t 
-        JOIN exchange_rates er ON t.currency_code = er.currency_code
+        FROM tax_rules t JOIN exchange_rates er ON t.currency_code = er.currency_code
         WHERE t.country_code = $1 LIMIT 1`, [targetCountry]);
       
-      if (rulesRes.rows.length === 0) throw new Error(`Reglas no encontradas para ${targetCountry}`);
+      if (rulesRes.rows.length === 0) throw new Error(`Reglas no encontradas`);
       const { vat_rate, rate_to_usd } = rulesRes.rows[0];
 
-      // 3. Preparación SEO y Scraper
-      const localizedTitle = await gemini.translateForSearch(detail.title, targetLang);
-      const landedCostUsd = Number(detail.price) + Number(detail.shippingFee) + config.LAST_MILE_BUFFER;
+      // ⚡ FIX 2: Manejo de errores específico para Gemini para evitar caídas en la primera traducción
+      let localizedTitle = detail.productNameEn;
+      try {
+        localizedTitle = await gemini.translateForSearch(detail.productNameEn, targetLang);
+      } catch (translationError: any) {
+        console.warn(`⚠️ [Gemini Warn] Fallo al traducir título, usando original:`, translationError.message);
+      }
+      
+      // ⚡ Costo Logístico Estimado (Hasta que implementes la calculadora dinámica)
+      const estimatedShipping = 5.00; 
+      const landedCostUsd = Number(detail.sellPrice) + estimatedShipping + config.LAST_MILE_BUFFER;
       const titleForScraping = scraper.cleanProductName(localizedTitle);
       
       console.log(` 🌐 Buscando competencia local para: "${titleForScraping}"...`);
       let marketResults = await scraper.getCompetitorPrices(titleForScraping, targetCountry);
 
-      // 4. Lógica Océano Azul
       if (marketResults.length === 0) {
         const taxFactor = 1 + (Number(vat_rate) / 100);
-        const baseCostWithTax = landedCostUsd * taxFactor;
-        const targetMargin = Math.max(config.SAFETY_MARGIN * 2, 10.00); 
-        const syntheticPriceLocal = (baseCostWithTax + targetMargin) * Number(rate_to_usd);
-
+        const syntheticPriceLocal = ((landedCostUsd * taxFactor) + Math.max(config.SAFETY_MARGIN * 2, 10)) * Number(rate_to_usd);
         marketResults.push({
-          title: "Aether-Market-Engine (Strategic Target)",
-          price: Math.round(syntheticPriceLocal),
-          source: "Synthetic-Arbitrage",
-          link: "https://aether.trade/ocean-azul",
-          isSynthetic: true
+          title: "Aether-Market-Engine", price: Math.round(syntheticPriceLocal), source: "Synthetic", link: "", isSynthetic: true
         });
       }
 
-      // 5. CFO Engine (Con Retry y Exponential Backoff Anti-429)
       let analysis: any = null;
       let retries = 0;
-      const maxRetries = 3;
-
-      while (retries < maxRetries) {
+      while (retries < 3) {
         try {
           analysis = await competitorService.runFullAnalysis(
-            detail.title, targetCountry, parseFloat(vat_rate), 
+            detail.productNameEn, targetCountry, parseFloat(vat_rate), 
             parseFloat(rate_to_usd), landedCostUsd, marketResults, localizedTitle 
           );
-          break; // Si tiene éxito, rompemos el ciclo
+          break;
         } catch (aiError: any) {
-          if (aiError.message && aiError.message.includes('429')) {
+          // ⚡ FIX 3: Cubrimos explícitamente los fallos generales de Vertex AI y 429
+          if (aiError.message && (aiError.message.includes('429') || aiError.message.includes('exception posting request'))) {
             retries++;
-            console.log(`⚠️ [GEMINI 429] Cuota excedida. Reintento ${retries}/${maxRetries} en ${retries * 15} segundos...`);
-            await sleep(retries * 15000); // Espera 15s, luego 30s, luego 45s...
+            console.log(`⚠️ [Vertex AI] Intento ${retries}/3 fallido, reintentando en 15s...`);
+            await sleep(retries * 15000);
           } else {
-            throw aiError; // Si es un error distinto a 429, lo lanzamos para abortar
+            throw aiError;
           }
         }
       }
 
-      if (!analysis) {
-         console.log(` ❌ [ABORTADO] Gemini no respondió tras ${maxRetries} intentos.`);
-         message.ack();
-         return;
-      }
-
-      if (!analysis.isWinner) {
-        console.log(` ⏩ [RECHAZADO] ROI: ${analysis.analysis?.estimatedRoi}% | ${analysis.analysis?.reasoning}`);
+      if (!analysis || !analysis.isWinner) {
         message.ack();
         return;
       }
 
-      // 6. Multimedia
-      let localImages: string[] = [];
-      let finalVideoUrl = await serper.getPromotionalVideo(analysis.copywriting?.title_localized || localizedTitle, detail.videoUrl);
-      
-      const lifestyleSearch = analysis.copywriting?.title_localized || localizedTitle;
-      const extraImages = await serper.getLifestyleImages(lifestyleSearch);
-      const combinedImages = [...detail.images.slice(0, 4), ...extraImages.slice(0, 2)];
+      // ⚡ Manejo de Imágenes CJ
+      const mainImage = detail.bigImage || detail.productImageSet?.[0] || '';
+      const finalVideoUrl = await serper.getPromotionalVideo(analysis.copywriting?.title_localized || localizedTitle, '');
+      const extraImages = await serper.getLifestyleImages(analysis.copywriting?.title_localized || localizedTitle);
+      const combinedImages = [...(detail.productImageSet || []).slice(0, 4), ...extraImages.slice(0, 2)];
 
       const rawLocalImages = await Promise.all(
-        combinedImages.slice(0, 6).map((url, i) => media.downloadAndUploadImage(url, aliexpress_id, i))
+        combinedImages.slice(0, 6).map((url, i) => media.downloadAndUploadImage(url, pid, i))
       );
-      
-      // ⚡ FIX: Limpiamos los "huecos" ("") 
       const cleanLocalImages = rawLocalImages.filter(img => img && img.trim() !== '');
 
-      // ==========================================================
-      // 7. PERSISTENCIA TRANSACCIONAL (ATÓMICA)
-      // ==========================================================
       await client.query('BEGIN');
 
-      // --- 7.1 CATEGORÍA ---
       let dbCategoryId = null; 
-      const rawCatId = detail.category_id || (detail as any).catId; 
+      const rawCatRes = detail.categoryName || 'General';
       
-      if (rawCatId && rawCatId !== 'UNCATEGORIZED') {
-        const catRes = await client.query('SELECT id FROM categories WHERE ali_category_id = $1', [String(rawCatId)]);
-        
-        if (catRes.rows.length > 0) {
-          dbCategoryId = catRes.rows[0].id;
-        } else {
-          let finalCategoryName = 'Accesorios y Gadgets';
-          try {
-            const promptCat = `Clasifica el producto "${localizedTitle}" en una categoría general para tienda online. Máximo 3 palabras, en Español. Ejemplos: "Electrónica", "Deportes y Ciclismo", "Hogar", "Salud y Belleza". Responde SOLO con el nombre de la categoría, sin comillas.`;
-            const inferredCat = await gemini.askGenericPrompt(promptCat);
-            if (inferredCat && inferredCat.length > 0 && inferredCat.length < 50) {
-              finalCategoryName = inferredCat.replace(/['"]/g, '').trim();
-            }
-          } catch (e) {
-            console.warn('⚠️ No se pudo inferir la categoría con Gemini, usando fallback.');
-          }
+      // Limpiamos el breadcrumb de CJ (puede venir con '>' o '/')
+      const separator = rawCatRes.includes('>') ? '>' : '/';
+      const catParts = rawCatRes.split(separator).map((p: string) => p.trim());
+      const finalCategoryName = catParts[catParts.length - 1] || 'General'; // Toma la subcategoría específica
 
-          const categorySlug = finalCategoryName
-            .toLowerCase()
-            .normalize("NFD") 
-            .replace(/[\u0300-\u036f]/g, "") 
-            .replace(/[^a-z0-9]+/g, '-') 
-            .replace(/(^-|-$)+/g, ''); 
+      const categorySlug = finalCategoryName
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/(^-|-$)+/g, '');
 
-          const newCat = await client.query(`
-            INSERT INTO categories (ali_category_id, name, slug) 
-            VALUES ($1, $2, $3) 
-            ON CONFLICT (slug) DO UPDATE SET 
-              name = EXCLUDED.name,
-              ali_category_id = EXCLUDED.ali_category_id
-            RETURNING id
-          `, [String(rawCatId), finalCategoryName, categorySlug]);
-          
-          dbCategoryId = newCat.rows[0].id;
-          console.log(`📁 Categoría verificada/creada en BD: ${finalCategoryName} (Slug: ${categorySlug})`);
-        }
+      const catRes = await client.query('SELECT id FROM categories WHERE slug = $1', [categorySlug]);
+      
+      if (catRes.rows.length > 0) {
+        dbCategoryId = catRes.rows[0].id;
+      } else {
+        const newCat = await client.query(`
+          INSERT INTO categories (ali_category_id, name, slug) 
+          VALUES ($1, $2, $3) 
+          ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name 
+          RETURNING id`, 
+          [String(detail.categoryId || 'CJ-CAT'), finalCategoryName, categorySlug]
+        );
+        dbCategoryId = newCat.rows[0].id;
+        console.log(`📁 Categoría limpia creada en BD: ${finalCategoryName} (Slug: ${categorySlug})`);
       }
 
-      // --- 7.2 PROVEEDOR ---
       let dbSupplierId = null;
-      const rawSuppId = detail.supplier_id || (detail as any).seller?.storeId;
-      const storeName = detail.store_name || (detail as any).seller?.storeTitle || 'Unknown Store';
-      
-      if (rawSuppId && rawSuppId !== 'UNKNOWN_STORE') {
-        const suppRes = await client.query('SELECT id FROM suppliers WHERE aliexpress_store_id = $1', [String(rawSuppId)]);
-        if (suppRes.rows.length > 0) {
-          dbSupplierId = suppRes.rows[0].id;
-        } else {
-          const newSupp = await client.query(
-            'INSERT INTO suppliers (aliexpress_store_id, store_name) VALUES ($1, $2) RETURNING id', 
-            [String(rawSuppId), storeName]
-          );
+      if (detail.supplierId) {
+        const suppRes = await client.query('SELECT id FROM suppliers WHERE aliexpress_store_id = $1', [String(detail.supplierId)]);
+        if (suppRes.rows.length > 0) dbSupplierId = suppRes.rows[0].id;
+        else {
+          const newSupp = await client.query('INSERT INTO suppliers (aliexpress_store_id, store_name) VALUES ($1, $2) RETURNING id', [String(detail.supplierId), detail.supplierName || 'CJ Supplier']);
           dbSupplierId = newSupp.rows[0].id;
         }
       }
 
-      // --- 7.3 PROCESAMIENTO DE ATRIBUTOS TÉCNICOS ---
-      const rawProperties = detail.properties || [];
-
-      if (rawProperties.length > 0) {
-          detail.properties = await gemini.translateAttributes(rawProperties, targetLang);
-        }
-
-      // --- LÓGICA DE DÍAS DE TRÁNSITO AL VUELO ---
-      let estimatedTransitDays = 15; 
-      
-      try {
-        const rawEstimateDateStr = detail.delivery?.estimateDate;
-        if (rawEstimateDateStr) {
-          const estimatedDate = new Date(rawEstimateDateStr);
-          const currentDate = new Date();
-          
-          if (!isNaN(estimatedDate.getTime())) {
-            const diffTime = estimatedDate.getTime() - currentDate.getTime();
-            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-            
-            if (diffDays > 0 && diffDays <= 60) {
-              estimatedTransitDays = diffDays;
-            }
-          }
-        }
-      } catch (e) {
-        console.warn(`⚠️ [TRÁNSITO] No se pudo calcular el tránsito para ${aliexpress_id}. Usando default 15 días.`);
-      }
-
-      // --- 7.4 PRODUCTO ---
       const insertQuery = `
         INSERT INTO products (
           batch_id, aliexpress_id, title_original, category_id, supplier_id,
@@ -297,110 +202,109 @@ export async function listenForCandidates() {
           vat_rate, rate_to_usd, target_country, status, marketing_copy, 
           ai_verdict, raw_details, estimated_transit_days
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, 'WINNER', $18, $19, $20, $21)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, 'WINNER', $18, $19, $20, 15)
         ON CONFLICT (aliexpress_id, target_country) DO UPDATE SET 
-          updated_at = NOW(),
-          status = 'WINNER',
-          raw_details = EXCLUDED.raw_details,
-          estimated_transit_days = EXCLUDED.estimated_transit_days,
-          video_url = EXCLUDED.video_url,
-          local_images = EXCLUDED.local_images
+          updated_at = NOW(), status = 'WINNER', raw_details = EXCLUDED.raw_details,
+          video_url = EXCLUDED.video_url, local_images = EXCLUDED.local_images
         RETURNING id;
       `;
 
       const productRes = await client.query(insertQuery, [
-        batchId, aliexpress_id, detail.title, dbCategoryId, dbSupplierId, 
-        detail.imageUrl || detail.images[0], 
-        finalVideoUrl, // ⚡ FIX: Video ahora entra a la Base de Datos
-        JSON.stringify(cleanLocalImages), // ⚡ FIX: Guardamos el array limpio
-        detail.price, detail.shippingFee, 
-        analysis.analysis.suggestedPriceLocal,
+        batchId, pid, detail.productNameEn, dbCategoryId, dbSupplierId, 
+        mainImage, finalVideoUrl, JSON.stringify(cleanLocalImages), 
+        detail.sellPrice, estimatedShipping, analysis.analysis.suggestedPriceLocal,
         (analysis.analysis.suggestedPriceLocal / parseFloat(rate_to_usd)),
         analysis.analysis.estimatedRoi, analysis.analysis.netMarginUsd,
         parseFloat(vat_rate), parseFloat(rate_to_usd), targetCountry,
-        JSON.stringify(analysis.copywriting), 
-        analysis.analysis.reasoning, 
-        JSON.stringify(detail),
-        estimatedTransitDays
+        JSON.stringify(analysis.copywriting), analysis.analysis.reasoning, JSON.stringify(detail)
       ]);
-      
       const internalProductId = productRes.rows[0].id;
 
-      // ==========================================================
-      // 8. PERSISTENCIA DE VARIANTES
-      // ==========================================================
-      const skuData = detail.sku; 
+      // ⚡ PROCESAMIENTO DE VARIANTES CJ (AJUSTADO SEGÚN DOCUMENTACIÓN OFICIAL DE CJ)
+      const variantList = detail.variants || detail.variantList || [];
 
-      if (skuData && skuData.props && skuData.base) {
-        const propsMap = new Map();
-        skuData.props.forEach((prop: any) => {
-          prop.values.forEach((val: any) => {
-            propsMap.set(`${prop.pid}:${val.vid}`, { 
-              name: prop.name, 
-              value: val.name,
-              image: val.image 
-            });
-          });
-        });
-
-        for (const variantBase of skuData.base) {
-          const propPathRaw = variantBase.propMap || variantBase.propPath || "";
-          const propPaths = propPathRaw ? propPathRaw.split(';') : [];
-          
-          let colorName = null;
-          let sizeName = null;
-          let variantImage = variantBase.image || null;
-
-          propPaths.forEach((path: string) => {
-            const info = propsMap.get(path);
-            if (info) {
-              if (path.startsWith('14:') || info.name.toLowerCase().includes('color')) {
-                colorName = info.value;
-                if (!variantImage) variantImage = info.image; 
-              } else {
-                sizeName = info.value;
-              }
-            }
-          });
-
-          // ⚡ FIX: Extraemos primero el promotionPrice (precio real), y usamos price solo como respaldo
-          const variantPriceUsd = parseFloat(variantBase.promotionPrice || variantBase.price || detail.price || '0');
-
-          await client.query(`
-            INSERT INTO product_variants (
-              product_id, ali_sku_id, color, size, stock, additional_cost_usd, image_url, is_active
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-            ON CONFLICT (ali_sku_id) DO UPDATE SET 
-              color = EXCLUDED.color, 
-              size = EXCLUDED.size,
-              stock = EXCLUDED.stock,
-              additional_cost_usd = EXCLUDED.additional_cost_usd,
-              updated_at = NOW()
-          `, [
-            internalProductId, 
-            variantBase.skuId, 
-            colorName, 
-            sizeName, 
-            variantBase.quantity || 0, 
-            variantPriceUsd, 
-            variantImage || detail.imageUrl || detail.images[0],
-            (Number(variantBase.quantity) > 0)
-          ]);
+      for (const variant of variantList) {
+        let colorName = null;
+        let sizeName = null;
+        
+        // 1. Extraer Atributos: CJ usa 'variantKeyEn' (ej. "Black-XXL")
+        const vKey = variant.variantKeyEn || variant.variantKey || '';
+        if (vKey) {
+          const parts = vKey.split('-');
+          if (parts.length > 1) {
+            colorName = parts[0].trim();
+            sizeName = parts.slice(1).join('-').trim(); // Por si hay más guiones en la talla
+          } else {
+            colorName = parts[0].trim();
+          }
         }
-        console.log(` 📦 [VARIANTS] ${skuData.base.length} variantes integradas/actualizadas.`);
+
+        // 2. Extraer Stock: 'variantInventories' viene como un String con formato JSON según doc
+        let stock = 0;
+        try {
+          const rawInventories = variant.variantInventories || variant.inventories || '[]';
+          const invArray = typeof rawInventories === 'string' ? JSON.parse(rawInventories) : rawInventories;
+          
+          if (Array.isArray(invArray)) {
+            const cnInv = invArray.find((i: any) => i.countryCode === 'CN');
+            if (cnInv && cnInv.totalInventory !== undefined) {
+              stock = Number(cnInv.totalInventory);
+            }
+          }
+        } catch (e) {
+          console.warn(`⚠️ [CJ Warn] No se pudo parsear el inventario para la variante: ${vKey}`);
+        }
+
+        // 3. Fallbacks de seguridad para IDs y Precios
+        const variantId = variant.vid || variant.id;
+        const variantPrice = variant.sellPrice || variant.variantSellPrice || detail.sellPrice;
+        const variantImage = variant.variantImage || variant.image || mainImage;
+
+        if (!variantId) continue; // Evitamos insertar variantes fantasma
+
+        await client.query(`
+          INSERT INTO product_variants (
+            product_id, ali_sku_id, color, size, stock, additional_cost_usd, image_url, is_active
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+          ON CONFLICT (ali_sku_id) DO UPDATE SET 
+            color = EXCLUDED.color, 
+            size = EXCLUDED.size, 
+            stock = EXCLUDED.stock,
+            additional_cost_usd = EXCLUDED.additional_cost_usd, 
+            image_url = EXCLUDED.image_url,
+            is_active = EXCLUDED.is_active,
+            updated_at = NOW()
+        `, [
+          internalProductId, 
+          variantId, 
+          colorName, 
+          sizeName, 
+          stock, 
+          variantPrice, 
+          variantImage, 
+          (stock > 0) // La variante solo estará activa si hay stock real en China
+        ]);
       }
 
       await client.query('COMMIT');
-      await redis.set(`global_proc:${aliexpress_id}`, '1', 'EX', 86400);
-      console.log(` ✅ [GANADOR] ${localizedTitle} (ROI: ${analysis.analysis.estimatedRoi}%)`);
+      await redis.set(`global_proc:${pid}`, '1', 'EX', 86400);
+      console.log(` ✅ [GANADOR] ${localizedTitle} guardado en BD con variantes CJ.`);
+      
+      // Se confirma el mensaje al final de un procesamiento exitoso
       message.ack();
 
     } catch (error: any) {
       if (client) await client.query('ROLLBACK');
-      console.error(`❌ [ERROR CRÍTICO] ID ${aliexpress_id}:`, error.message);
+      console.error(`❌ [ERROR CRÍTICO] PID ${pid}:`, error.message);
+      
+      // ⚡ FIX CRÍTICO 4: Aseguramos que el mensaje se descarte incluso si explota algo masivo, 
+      // para no crear un bucle infinito de redeliveries en Pub/Sub.
       message.ack(); 
     } finally {
-      client.release(); 
+      // ⚡ FIX: Solo hacemos release si el client llegó a inicializarse
+      if (client) {
+        client.release(); 
+      }
     }
   });
 }

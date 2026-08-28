@@ -132,14 +132,17 @@ export class ScraperService {
     return price;
   }
 
- private buildQuery(name: string, country: string): string {
+  private buildQuery(name: string, country: string): string {
     const config = this.MARKET_MAP[country.toUpperCase()] || this.MARKET_MAP['US'];
     const cleanName = this.cleanProductName(name);
     
     const countryName = country.toUpperCase() === 'CL' ? 'chile' : country.toUpperCase() === 'MX' ? 'mexico' : '';
-    const exclusions = "-site:aliexpress.com -site:alibaba.com -site:temu.com";
     
-    const finalQuery = `${cleanName} ${config.keywords} ${countryName} ${exclusions}`.trim();
+    // ⚡ FIX (ERROR 400 SERPER): La cuenta gratuita de Serper PROHÍBE el uso de operadores avanzados como "-site:".
+    // Se elimina la cadena de exclusiones para que la API permita procesar la petición.
+    const sanitizedName = cleanName.replace(/["']/g, "").trim();
+    
+    const finalQuery = `${sanitizedName} ${config.keywords} ${countryName}`.trim();
     
     console.log(`🔍 [DEBUG BUILDQUERY] Query generada: "${finalQuery}"`);
     
@@ -156,11 +159,7 @@ export class ScraperService {
       const { data } = await axios.post('https://google.serper.dev/search', {
         q: query,
         gl: country.toLowerCase().trim(),
-        hl: countryCode === 'US' ? "en" : "es",
-        // ⚡ EXPANSIÓN DE UNIVERSO: Le pedimos 40 resultados en lugar de los 10 por defecto
-        num: 40, 
-        // Forzamos a que traiga siempre el módulo de Shopping de Google si existe
-        autocorrect: true
+        hl: countryCode === 'US' ? "en" : "es"
       }, {
         headers: { 'X-API-KEY': this.apiKey, 'Content-Type': 'application/json' }
       });
@@ -197,7 +196,7 @@ export class ScraperService {
         .sort((a, b) => a.price - b.price); 
 
     } catch (error: any) {
-      console.error(`❌ Error en Serper (Competitors):`, error.message);
+      console.error(`❌ Error en Serper (Competitors):`, error.response?.data || error.message);
       return [];
     }
   }

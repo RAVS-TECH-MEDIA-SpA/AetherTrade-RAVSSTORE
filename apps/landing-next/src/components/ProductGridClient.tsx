@@ -12,7 +12,7 @@ interface ProductGridProps {
 }
 
 export default function ProductGridClient({ products, categoriesList, countryCode }: ProductGridProps) {
-  const [selectedCategory, setSelectedCategory] = useState<string>('Todos');
+  const [selectedCategory, setSelectedCategory] = useState<string>('Destacados');
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [showLeftArrow, setShowLeftArrow] = useState(false);
@@ -20,11 +20,11 @@ export default function ProductGridClient({ products, categoriesList, countryCod
 
   // ⚡ REEMPLAZAMOS LA LÓGICA ANTIGUA CON ESTA LÍNEA
   // Ya no adivinamos las categorías, usamos las 10 exactas que nos mandó page.tsx
-  const tabs = ['Todos', ...(categoriesList || [])];
+  const tabs = ['Destacados', ...(categoriesList || [])];
 
   const filteredProducts = useMemo(() => {
-    if (selectedCategory === 'Todos') {
-      // ⚡ Limitamos la vista "Todos" a 24 productos (o 20) para no hacer la grilla infinita
+    if (selectedCategory === 'Destacados') {
+      // ⚡ Limitamos la vista "Destacados" a 24 productos (o 20) para no hacer la grilla infinita
       return products.slice(0, 24); 
     }
     return products.filter(p => {

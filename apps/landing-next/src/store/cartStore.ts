@@ -11,6 +11,7 @@ export interface CartItem {
   imageUrl: string;
   color?: string;
   size?: string;
+  isDigital?: boolean; // Nuevo campo para indicar si es un producto digital
 }
 
 interface CartState {

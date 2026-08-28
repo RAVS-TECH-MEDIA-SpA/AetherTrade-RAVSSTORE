@@ -5,8 +5,35 @@ import * as crypto from 'crypto';
 
 const pubsub = new PubSub({ projectId: process.env.PUBSUB_PROJECT_ID || 'aethertrade-core' });
 
+// ⚡ Función robusta para publicar en Pub/Sub ignorando falsos "Already Exists"
+const publishWithAutoCreate = async (topicName: string, data: any) => {
+  const topic = pubsub.topic(topicName);
+  
+  try {
+    // 1. Intentamos crear el topic por las buenas.
+    // Si ya existe, Google Cloud arrojará un error con código 6 (ALREADY_EXISTS).
+    await pubsub.createTopic(topicName);
+    console.log(`☁️ [PubSub] Topic '${topicName}' creado exitosamente.`);
+  } catch (error: any) {
+    // 2. Si el error NO es "ALREADY_EXISTS" (código 6), lanzamos la alerta real.
+    if (error.code !== 6) {
+      console.error(`🚨 [PubSub] Error crítico verificando/creando topic ${topicName}:`, error);
+      throw error;
+    }
+    // Si el error ES código 6, lo ignoramos silenciosamente porque el topic ya está listo para usar.
+  }
+
+  // 3. Publicamos el mensaje de forma segura
+  try {
+    await topic.publishMessage({ data: Buffer.from(JSON.stringify(data)) });
+  } catch (publishError) {
+    console.error(`🚨 [PubSub] Error publicando mensaje en ${topicName}:`, publishError);
+    throw publishError;
+  }
+};
+
 export const handleMPWebhook = async (req: Request, res: Response) => {
-  console.log("📡 [Webhook] Query recibido:", req.query); // ⚡ Log extra para ver exacto el data.id
+  console.log("📡 [Webhook] Query recibido:", req.query); 
   const { query, body, headers } = req;
   
   const topic = query.topic || query.type || body.type;
@@ -57,7 +84,6 @@ export const handleMPWebhook = async (req: Request, res: Response) => {
 
       if (digest !== v1) {
         console.warn('⚠️ [Seguridad] La firma no coincide (Común en Sandbox). Procediendo a validar directamente en la API de MP...');
-        // ⚡ FIX: Ya NO bloqueamos con 401. Dejamos que el código baje al Paso 2 para que el fetch() descubra la verdad.
       } else {
         console.log('✅ [Seguridad] Firma de Mercado Pago validada correctamente.');
       }
@@ -70,7 +96,7 @@ export const handleMPWebhook = async (req: Request, res: Response) => {
   }
 
   // ============================================================================
-  // 2. PROCESAMIENTO DEL PAGO
+  // 2. PROCESAMIENTO DEL PAGO Y ORQUESTACIÓN
   // ============================================================================
   try {
     const mpResponse = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
@@ -112,6 +138,7 @@ export const handleMPWebhook = async (req: Request, res: Response) => {
         const contentIds = itemsRes.rows.map(row => String(row.product_id));
         const tracking = customerData.client_tracking_data || {};
 
+        // A. Payload para Meta CAPI
         const capiPayload = {
           eventName: 'Purchase',
           eventId: paymentId, 
@@ -126,15 +153,35 @@ export const handleMPWebhook = async (req: Request, res: Response) => {
           eventSourceUrl: `https://ravsstore.com/checkout/success?order=${orderId}`
         };
 
-        await pubsub.topic('aether-meta-capi').publishMessage({
-          data: Buffer.from(JSON.stringify(capiPayload)),
-        });
+        // B. Payload para Fulfillment (AutoDS) y Facturación
+        const fulfillmentPayload = {
+          orderId: orderId,
+          paymentId: paymentId,
+          customerEmail: customerData.email
+        };
 
-        console.log(`📡 [Webhook] Evento Purchase de la orden [${orderId}] enviado a Meta CAPI Worker.`);
+        // ============================================================================
+        // 3. DESPACHO A COLAS DE PUBSUB
+        // ============================================================================
+        try {
+          // Meta CAPI
+          await publishWithAutoCreate('aether-meta-capi', capiPayload);
+          console.log(`📡 [Webhook] Evento Purchase de la orden [${orderId}] enviado a Meta CAPI Worker.`);
+
+          // Boleta Electrónica (SimpleFactura)
+          await publishWithAutoCreate('aether-billing', fulfillmentPayload);
+          console.log(`🧾 [Webhook] Orden [${orderId}] enviada a la cola de Facturación.`);
+
+          // Fulfillment (AutoDS)
+          await publishWithAutoCreate('aether-fulfillment', fulfillmentPayload);
+          console.log(`📦 [Webhook] Orden [${orderId}] enviada a la cola de AutoDS.`);
+        } catch (pubsubErr) {
+          console.error(`🚨 Error publicando en colas de PubSub para la orden ${orderId}:`, pubsubErr);
+        }
       }
     }
 
-    // Respondemos 200 OK
+    // Respondemos 200 OK inmediatamente a Mercado Pago
     res.status(200).send('Webhook processed successfully');
 
   } catch (error) {

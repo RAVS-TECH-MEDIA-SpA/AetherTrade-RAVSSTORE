@@ -48,30 +48,55 @@ export default async function HomePage() {
   const products = await getWinners(countryCode);
 
   // ============================================================================
-  // ⚡ LÓGICA DE DISTRIBUCIÓN ESTRICTA (10 ARRIBA, RESTO ABAJO)
+  // ⚡ LÓGICA DE DISTRIBUCIÓN ESTRICTA Y FILTRO DE DENSIDAD
   // ============================================================================
   
   const getCatName = (p: any) => p.category_name || (p.category && p.category.name) || (typeof p.category === 'string' ? p.category : null) || 'Otras Novedades';
   
-  // 1. Extraemos TODAS las categorías únicas
-  const allUniqueCategories = Array.from(new Set(products.map(getCatName))) as string[];
+  // 1. Agrupar productos por categoría y contar cuántos hay en cada una
+  const categoryCounts: Record<string, any[]> = {};
+  products.forEach((p: any) => {
+    const cat = getCatName(p);
+    if (!categoryCounts[cat]) categoryCounts[cat] = [];
+    categoryCounts[cat].push(p);
+  });
 
-  // 2. Exactamente las primeras 10 para la barra de navegación
-  const top10Categories = allUniqueCategories.slice(0, 10);
-  
-  // 3. De la 11 en adelante para los carruseles
-  const remainingCategories = allUniqueCategories.slice(10);
+  // 2. Ordenar categorías por volumen (las que tienen más productos van primero)
+  const sortedCategories = Object.keys(categoryCounts).sort((a, b) => categoryCounts[b].length - categoryCounts[a].length);
 
-  // 4. Productos de las 10 categorías principales
+  // 3. Exactamente las primeras 10 para la barra de navegación (Grid Principal)
+  const top10Categories = sortedCategories.slice(0, 10);
   const mainGridProducts = products.filter((p: any) => top10Categories.includes(getCatName(p)));
 
-  // 5. Preparamos la data para los carruseles (eliminando el límite estricto de 3)
-  const carouselsData = remainingCategories.map(catName => {
-    return {
-      categoryName: catName,
-      products: products.filter((p: any) => getCatName(p) === catName)
-    };
-  }).filter(c => c.products.length > 0); // Solo filtramos si no tiene NINGÚN producto
+  // 4. Lógica de Densidad para los carruseles inferiores (De la categoría 11 en adelante)
+  const remainingCategories = sortedCategories.slice(10);
+  
+  const denseCarousels: { categoryName: string; products: any[] }[] = [];
+  const sparseProducts: any[] = [];
+
+  remainingCategories.forEach(catName => {
+    const catProducts = categoryCounts[catName];
+    // Si la categoría tiene 5 o más productos, se gana su propia fila
+    if (catProducts.length >= 5) {
+      denseCarousels.push({
+        categoryName: catName,
+        products: catProducts
+      });
+    } else {
+      // Si tiene 4 o menos, la sacamos de su fila individual y la mezclamos
+      sparseProducts.push(...catProducts);
+    }
+  });
+
+  // 5. Si quedaron productos "huérfanos" (categorías pequeñas), creamos un Mega-Carrusel final
+  if (sparseProducts.length > 0) {
+    denseCarousels.push({
+      categoryName: 'Descubre Más Novedades',
+      products: sparseProducts
+    });
+  }
+
+  const carouselsData = denseCarousels;
 
   return (
     <div className="min-h-screen bg-[#020617] text-white selection:bg-violet-500/30 scroll-smooth overflow-x-hidden">
@@ -150,7 +175,6 @@ export default async function HomePage() {
             </span>
           </div>
           
-          {/* ⚡ FIX: Aquí le pasamos categoriesList para que la barra no se vuelva loca */}
           <ProductGridClient 
             products={mainGridProducts} 
             categoriesList={top10Categories} 
@@ -158,7 +182,7 @@ export default async function HomePage() {
           />
         </section>
 
-        {/* ⚡ Renderizamos los N carruseles restantes */}
+        {/* ⚡ Renderizamos los carruseles dinámicos (densos + el consolidado de descubrimientos) */}
         {carouselsData.length > 0 && (
           <section className="flex flex-col gap-8 md:gap-10 pb-16">
             {carouselsData.map((carousel) => (
