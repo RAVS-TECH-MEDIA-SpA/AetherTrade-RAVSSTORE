@@ -1,3 +1,4 @@
+// (Mantén tus importaciones actuales arriba...)
 import { PubSub } from '@google-cloud/pubsub';
 import { pool } from '../lib/db.js';
 import { redis } from '../lib/redis.js';
@@ -6,7 +7,7 @@ import { CompetitorService } from '../competitor.service.js';
 import { ScraperService } from '../services/scraper.service.js';
 import { MediaService } from '../services/media.services.js';
 import { SerperService } from '../services/serper.service.js';
-import { CJDropshippingService } from '../services/cj.service.js'; // ⚡ CJ INYECTADO
+import { CJDropshippingService } from '../services/cj.service.js'; 
 import { MARKET_CONFIG } from '../config/constants.js';
 import { runDiscoveryTask } from '../workers/discovery.worker.js';
 
@@ -22,6 +23,14 @@ const serper = new SerperService();
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, Math.max(ms, 0)));
 
+// ⚡ NUEVO ESCUDO GLOBAL: Función auxiliar para forzar Timeouts en cualquier Promesa
+const withTimeout = (promise: Promise<any>, timeoutMs: number, operationName: string) => {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error(`TIMEOUT_EXTERNAL: ${operationName} demoró más de ${timeoutMs}ms`)), timeoutMs))
+  ]);
+};
+
 export async function listenForCandidates() {
   const topicName = 'candidate-analysis-2';
   const subscriptionName = 'candidate-analysis-sub-2';
@@ -36,12 +45,11 @@ export async function listenForCandidates() {
 
   const subscription = pubsub.subscription(subscriptionName, { flowControl: { maxMessages: 1 } });
   
-  // ⚡ FIX CRÍTICO 1: Capturador de errores a nivel de suscripción para evitar que Node.js colapse con exit(1)
   subscription.on('error', (error) => {
     console.error('🚨 [Pub/Sub Error] Error en la conexión de la suscripción:', error);
   });
 
-  console.log("📡 [LISTENER] Analysis Worker V6.0 (CJ Engine) | Cabrero listo.");
+  console.log("📡 [LISTENER] Analysis Worker V6.0 (CJ Engine + Anti-Zombie) | Cabrero listo.");
 
   subscription.on('message', async (message) => {
     let payload;
@@ -59,22 +67,27 @@ export async function listenForCandidates() {
       message.ack();
       return;
     }
-    
+    console.log(`\n📡 [Pub/Sub] Mensaje recibido para análisis profundo:`, payload);
     const { aliexpress_id: pid, batchId, targetCountry } = payload;
     const targetLang = targetCountry === 'CL' ? 'Español' : 'Inglés';
     const config = MARKET_CONFIG[targetCountry as keyof typeof MARKET_CONFIG] || MARKET_CONFIG.CL;
     
-    let client; // ⚡ Declaramos el cliente afuera para asegurar su liberación en el finally
+    let client; 
 
     try {
-      client = await pool.connect(); // ⚡ Movido dentro del try para captura segura y evitar bucles
+      client = await pool.connect(); 
       console.log(`\n🔍 [ANALISIS PROFUNDO] PID: ${pid} | Batch: ${batchId}`);
-
-      const jitterDelay = Math.floor(Math.random() * (120000 - 10000 + 1)) + 10000;
-      await sleep(jitterDelay);
       
-      // ⚡ Obtenemos el detalle desde CJ
-      const detail = await cjService.getProductDetail(pid);
+      // ⚡ ESCUDO APLICADO: Máximo 20s para obtener detalles de CJ
+      let detail;
+      try {
+        detail = await withTimeout(cjService.getProductDetail(pid), 20000, 'CJ_GetDetail');
+      } catch (e: any) {
+         console.warn(` ⏳ PID ${pid} descartado temporalmente por error externo: ${e.message}`);
+         // No confirmamos (ack) el mensaje para que PubSub lo reintente si fue un fallo de red
+         message.nack(); 
+         return;
+      }
       
       if (!detail || !detail.variants || detail.variants.length === 0) {
         console.log(` ❌ PID ${pid} descartado: Sin datos o variantes.`);
@@ -89,8 +102,6 @@ export async function listenForCandidates() {
       
       if (rulesRes.rows.length === 0) throw new Error(`Reglas no encontradas`);
       const { vat_rate, rate_to_usd } = rulesRes.rows[0];
-
-      // ⚡ FIX 2: Manejo de errores específico para Gemini para evitar caídas en la primera traducción
       let localizedTitle = detail.productNameEn;
       try {
         localizedTitle = await gemini.translateForSearch(detail.productNameEn, targetLang);
@@ -98,15 +109,21 @@ export async function listenForCandidates() {
         console.warn(`⚠️ [Gemini Warn] Fallo al traducir título, usando original:`, translationError.message);
       }
       
-      // ⚡ Costo Logístico Estimado (Hasta que implementes la calculadora dinámica)
       const estimatedShipping = 5.00; 
       const landedCostUsd = Number(detail.sellPrice) + estimatedShipping + config.LAST_MILE_BUFFER;
       const titleForScraping = scraper.cleanProductName(localizedTitle);
       
       console.log(` 🌐 Buscando competencia local para: "${titleForScraping}"...`);
-      let marketResults = await scraper.getCompetitorPrices(titleForScraping, targetCountry);
+      let marketResults = [];
+      try {
+        // ⚡ ESCUDO APLICADO: Máximo 35s para Scraper de Competencia
+        marketResults = await withTimeout(scraper.getCompetitorPrices(titleForScraping, targetCountry), 35000, 'Scraper_CompetitorPrices');
+      } catch (scrapeErr: any) {
+         console.warn(`⚠️ [Scraper Warn] Fallo al buscar competencia local (${scrapeErr.message}). Asumiendo mercado sintético exclusivo.`);
+      }
 
-      if (marketResults.length === 0) {
+      if (!marketResults || marketResults.length === 0) {
+        marketResults = [];
         const taxFactor = 1 + (Number(vat_rate) / 100);
         const syntheticPriceLocal = ((landedCostUsd * taxFactor) + Math.max(config.SAFETY_MARGIN * 2, 10)) * Number(rate_to_usd);
         marketResults.push({
@@ -124,7 +141,6 @@ export async function listenForCandidates() {
           );
           break;
         } catch (aiError: any) {
-          // ⚡ FIX 3: Cubrimos explícitamente los fallos generales de Vertex AI y 429
           if (aiError.message && (aiError.message.includes('429') || aiError.message.includes('exception posting request'))) {
             retries++;
             console.log(`⚠️ [Vertex AI] Intento ${retries}/3 fallido, reintentando en 15s...`);
@@ -140,26 +156,43 @@ export async function listenForCandidates() {
         return;
       }
 
-      // ⚡ Manejo de Imágenes CJ
       const mainImage = detail.bigImage || detail.productImageSet?.[0] || '';
-      const finalVideoUrl = await serper.getPromotionalVideo(analysis.copywriting?.title_localized || localizedTitle, '');
-      const extraImages = await serper.getLifestyleImages(analysis.copywriting?.title_localized || localizedTitle);
-      const combinedImages = [...(detail.productImageSet || []).slice(0, 4), ...extraImages.slice(0, 2)];
+      
+      let finalVideoUrl = '';
+      let extraImages: string[] = [];
+      
+      try {
+        // ⚡ ESCUDO APLICADO: Máximo 30s en total para buscar multimedia en Serper
+        [finalVideoUrl, extraImages] = await Promise.all([
+          withTimeout(serper.getPromotionalVideo(analysis.copywriting?.title_localized || localizedTitle, ''), 20000, 'Serper_Video'),
+          withTimeout(serper.getLifestyleImages(analysis.copywriting?.title_localized || localizedTitle), 20000, 'Serper_Images')
+        ]);
+      } catch (mediaErr: any) {
+         console.warn(`⚠️ [Media Warn] Fallo al obtener multimedia externa: ${mediaErr.message}. Usando solo recursos de CJ.`);
+      }
 
-      const rawLocalImages = await Promise.all(
-        combinedImages.slice(0, 6).map((url, i) => media.downloadAndUploadImage(url, pid, i))
-      );
-      const cleanLocalImages = rawLocalImages.filter(img => img && img.trim() !== '');
+      const combinedImages = [...(detail.productImageSet || []).slice(0, 4), ...(extraImages || []).slice(0, 2)];
+
+      let rawLocalImages = [];
+      try {
+        // ⚡ ESCUDO APLICADO: Máximo 45s para descargar y resubir imágenes
+        rawLocalImages = await withTimeout(
+           Promise.all(combinedImages.slice(0, 6).map((url, i) => media.downloadAndUploadImage(url, pid, i))),
+           45000, 'Media_Upload'
+        );
+      } catch (uploadErr: any) {
+         console.warn(`⚠️ [Media Upload Warn] Fallo la transferencia de imágenes: ${uploadErr.message}`);
+      }
+      
+      const cleanLocalImages = rawLocalImages.filter((img: string) => img && img.trim() !== '');
 
       await client.query('BEGIN');
 
       let dbCategoryId = null; 
       const rawCatRes = detail.categoryName || 'General';
-      
-      // Limpiamos el breadcrumb de CJ (puede venir con '>' o '/')
       const separator = rawCatRes.includes('>') ? '>' : '/';
       const catParts = rawCatRes.split(separator).map((p: string) => p.trim());
-      const finalCategoryName = catParts[catParts.length - 1] || 'General'; // Toma la subcategoría específica
+      const finalCategoryName = catParts[catParts.length - 1] || 'General';
 
       const categorySlug = finalCategoryName
         .toLowerCase()
@@ -220,26 +253,23 @@ export async function listenForCandidates() {
       ]);
       const internalProductId = productRes.rows[0].id;
 
-      // ⚡ PROCESAMIENTO DE VARIANTES CJ (AJUSTADO SEGÚN DOCUMENTACIÓN OFICIAL DE CJ)
       const variantList = detail.variants || detail.variantList || [];
 
       for (const variant of variantList) {
         let colorName = null;
         let sizeName = null;
         
-        // 1. Extraer Atributos: CJ usa 'variantKeyEn' (ej. "Black-XXL")
         const vKey = variant.variantKeyEn || variant.variantKey || '';
         if (vKey) {
           const parts = vKey.split('-');
           if (parts.length > 1) {
             colorName = parts[0].trim();
-            sizeName = parts.slice(1).join('-').trim(); // Por si hay más guiones en la talla
+            sizeName = parts.slice(1).join('-').trim(); 
           } else {
             colorName = parts[0].trim();
           }
         }
 
-        // 2. Extraer Stock: 'variantInventories' viene como un String con formato JSON según doc
         let stock = 0;
         try {
           const rawInventories = variant.variantInventories || variant.inventories || '[]';
@@ -251,16 +281,13 @@ export async function listenForCandidates() {
               stock = Number(cnInv.totalInventory);
             }
           }
-        } catch (e) {
-          console.warn(`⚠️ [CJ Warn] No se pudo parsear el inventario para la variante: ${vKey}`);
-        }
+        } catch (e) {}
 
-        // 3. Fallbacks de seguridad para IDs y Precios
         const variantId = variant.vid || variant.id;
         const variantPrice = variant.sellPrice || variant.variantSellPrice || detail.sellPrice;
         const variantImage = variant.variantImage || variant.image || mainImage;
 
-        if (!variantId) continue; // Evitamos insertar variantes fantasma
+        if (!variantId) continue; 
 
         await client.query(`
           INSERT INTO product_variants (
@@ -275,14 +302,7 @@ export async function listenForCandidates() {
             is_active = EXCLUDED.is_active,
             updated_at = NOW()
         `, [
-          internalProductId, 
-          variantId, 
-          colorName, 
-          sizeName, 
-          stock, 
-          variantPrice, 
-          variantImage, 
-          (stock > 0) // La variante solo estará activa si hay stock real en China
+          internalProductId, variantId, colorName, sizeName, stock, variantPrice, variantImage, (stock > 0) 
         ]);
       }
 
@@ -290,18 +310,20 @@ export async function listenForCandidates() {
       await redis.set(`global_proc:${pid}`, '1', 'EX', 86400);
       console.log(` ✅ [GANADOR] ${localizedTitle} guardado en BD con variantes CJ.`);
       
-      // Se confirma el mensaje al final de un procesamiento exitoso
       message.ack();
 
     } catch (error: any) {
       if (client) await client.query('ROLLBACK');
       console.error(`❌ [ERROR CRÍTICO] PID ${pid}:`, error.message);
       
-      // ⚡ FIX CRÍTICO 4: Aseguramos que el mensaje se descarte incluso si explota algo masivo, 
-      // para no crear un bucle infinito de redeliveries en Pub/Sub.
-      message.ack(); 
+      if (error.message.includes('TIMEOUT_EXTERNAL')) {
+          // Si falló por timeout externo de CJ, rechazamos para reintento en el futuro
+          message.nack();
+      } else {
+          // Si fue un fallo interno grave de BD o parseo, lo confirmamos para no enciclar la cola
+          message.ack(); 
+      }
     } finally {
-      // ⚡ FIX: Solo hacemos release si el client llegó a inicializarse
       if (client) {
         client.release(); 
       }

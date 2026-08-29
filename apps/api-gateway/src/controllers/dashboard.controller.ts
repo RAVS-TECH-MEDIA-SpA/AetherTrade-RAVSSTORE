@@ -360,7 +360,7 @@ export const triggerAnalysis = async (req: Request, res: Response) => {
       console.log(`📤 [GATEWAY] Enviando tarea de nicho: "${nicheName}" al Worker...`);
       console.log(`📤 [GATEWAY] Payload: ${JSON.stringify(messageData)}`);
       console.log(`📤 [GATEWAY] DataBuffer: ${dataBuffer.toString()}`);
-      return pubsub.topic(topicName).publishMessage({ data: dataBuffer });
+      return pubsub.topic('cj-niche-processing').publishMessage({ data: dataBuffer });
     });
 
     // 5. Confirmación de envío masivo

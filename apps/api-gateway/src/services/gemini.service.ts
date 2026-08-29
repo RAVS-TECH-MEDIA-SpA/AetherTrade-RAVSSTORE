@@ -34,7 +34,7 @@ export class GeminiService {
     } 
   });
 
-  async generateDynamicNiches(country: string, limit: number, excludedNiches: string[] = []): Promise<string[]> {
+ async generateDynamicNiches(country: string, limit: number, excludedNiches: string[] = []): Promise<string[]> {
     const now = new Date();
     const month = now.toLocaleString('es-CL', { month: 'long' });
     const seed = now.getTime(); 
@@ -58,10 +58,11 @@ export class GeminiService {
         5. WORD LIMIT: Exactly 2 to 3 words per string.
         6. NO BRANDS: Do not include brand names.
 
-        DROPSHIPPING MARKET PARAMETERS (Global Scale & Blue Ocean):
-        - Focus: Lightweight, high-margin, impulse-buy gadgets, smart home problem-solvers, ergonomic wellness, or pet technology.
-        - Retail Gap: Items with high perceived value that are hard to find in standard local retail or hardware stores.
-        - Logistics constraints: Strictly AVOID heavy items, large dimensions, liquids, industrial machinery, weapons, or highly fragile materials.
+        DROPSHIPPING MARKET PARAMETERS (Tech & High-End Focus):
+        - TARGET CATEGORIES: High-end electronics, smart home automation, tech gadgets, specialized tools, automotive tech accessories, computer peripherals, and advanced pet technology.
+        - STRICTLY FORBIDDEN CATEGORIES: Clothing, apparel, fashion accessories, jewelry, rings, necklaces, bracelets, textiles, shoes, bags, and cosmetics. DO NOT suggest anything related to fashion.
+        - Retail Gap: Compact, high-perceived-value technology that is hard to find in standard local retail.
+        - Logistics constraints: Focus on small but expensive tech. Strictly AVOID heavy items, large dimensions, liquids, or highly fragile materials.
         - Seasonality: Consider the specific weather and cultural needs for ${month} in ${country}.
         
         PROFITABILITY: Net Margin > $${config.SAFETY_MARGIN.toFixed(2)} USD.`;
@@ -81,7 +82,8 @@ export class GeminiService {
 
     } catch (error) {
       console.error("❌ Error en Discovery IA:", error);
-      return ["heated insoles", "electric mug warmer", "dehumidifier bags"];
+      // Fallback actualizado a tecnología
+      return ["smart door lock", "wifi temperature sensor", "wireless car charger"];
     }
   }
 }

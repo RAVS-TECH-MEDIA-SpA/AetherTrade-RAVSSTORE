@@ -35,30 +35,35 @@ export class GeminiService {
     } 
   });
 
-  // ⚡ MOTOR INTERNO DE REINTENTOS PARA VERTEX AI (CON JITTER EXPONENCIAL)
+ // ⚡ MOTOR INTERNO DE REINTENTOS CON TIMEOUT Y JITTER
   private async generateContentWithRetry(prompt: string, maxRetries = 4): Promise<any> {
     let retries = 0;
     while (retries < maxRetries) {
       try {
-        return await this.model.generateContent(prompt);
+        // ESCUDO: Si Gemini no responde en 20 segundos, lo matamos para no colgar Cloud Run
+        const response: any = await Promise.race([
+          this.model.generateContent(prompt),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('GEMINI_TIMEOUT')), 60000))
+        ]);
+        return response;
       } catch (error: any) {
-        if (error.message && error.message.includes('429')) {
+        // Atrapamos el Timeout o el error 429 de Cuota
+        if ((error.message && error.message.includes('429')) || error.message === 'GEMINI_TIMEOUT') {
           retries++;
+          const reason = error.message === 'GEMINI_TIMEOUT' ? 'Timeout (20s)' : 'Cuota excedida (429)';
           
-          // Retroceso exponencial: 5s, 10s, 20s, 40s
           const baseWait = Math.pow(2, retries) * 2500; 
-          // Jitter: añade un tiempo aleatorio entre 0 y 4 segundos para evitar estampidas
           const jitter = Math.floor(Math.random() * 4000); 
           const backoffTime = baseWait + jitter;
 
-          console.warn(`⚠️ [VERTEX 429] Cuota excedida. Reintento interno ${retries}/${maxRetries} en ${(backoffTime / 1000).toFixed(1)}s...`);
+          console.warn(`⚠️ [VERTEX AI] ${reason}. Reintento ${retries}/${maxRetries} en ${(backoffTime / 1000).toFixed(1)}s...`);
           await new Promise(res => setTimeout(res, backoffTime));
         } else {
-          throw error; // Falla inmediata por otros errores (ej. 403, 500)
+          throw error; 
         }
       }
     }
-    throw new Error(`[VertexAI] Falló tras ${maxRetries} reintentos por estrangulamiento de cuota (429).`);
+    throw new Error(`[VertexAI] Falló tras ${maxRetries} reintentos.`);
   }
 
   /**
@@ -146,12 +151,12 @@ export class GeminiService {
       - Descripción del Fabricante: ${manufacturerDescription}
 
       ### 3. PROTOCOLO DE PRICING ESTRATÉGICO Y CPA:
-      - ESCENARIO COMPETITIVO: Si existe competencia real (${!hasSynthetic}), el 'suggestedPriceLocal' debe posicionarse un 4% por debajo del precio mínimo para capturar volumen.
-      - ESCENARIO DE EXCLUSIVIDAD: Si es "Aether-Market-Engine" (${hasSynthetic}), optimiza el precio para obtener un ROI entre 100% y 250%.
+      - ESCENARIO COMPETITIVO: Si existe competencia real (${!hasSynthetic}), asume un posicionamiento PREMIUM. El 'suggestedPriceLocal' debe priorizar la rentabilidad, calculando un precio que garantice un ROI de al menos 30% sobre el costo total, incluso si queda por encima de la competencia.
+      - ESCENARIO DE EXCLUSIVIDAD: Si es "Aether-Market-Engine" (${hasSynthetic}), optimiza el precio para obtener un ROI entre 100% y 200%.
       - CÁLCULO DE CPA MÁXIMO: cpaMaxLocal = Margen Neto (en ${currency}) * 0.60. (El 60% del margen se destina a Meta Ads).
 
       ### 4. LÓGICA DE DECISIÓN (WINNER & ADS):
-      - "isWinner" = true SOLO SI el ROI Final es > 15% y Margen Neto > $${config.SAFETY_MARGIN.toFixed(2)} USD.
+      - "isWinner" = true SOLO SI el modelo financiero proyecta un Margen Neto de al menos $${config.SAFETY_MARGIN.toFixed(2)} USD después de costos e impuestos.
       - "isViableForAds" = true SOLO SI el cpaMaxLocal calculado es >= ${targetCountry === 'CL' ? '1800' : '2.00'} ${currency}.
 
       ### 5. REGLAS DE COPYWRITING Y SEGMENTACIÓN META ADS:

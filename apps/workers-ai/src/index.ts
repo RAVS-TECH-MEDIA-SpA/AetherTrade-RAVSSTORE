@@ -6,13 +6,13 @@ import { fileURLToPath } from 'url';
 
 // Importación de Workers y Servicios
 import { listenForCandidates } from './workers/analysis.worker.js'; 
-import { runDiscoveryTask } from './workers/discovery.worker.js'; 
+
+
+import { runDiscoveryTask, triggerDiscoveryBatch, processPubSubNiche, processCJBatch, setupPubSubInits } from './workers/discovery.worker.js';
+
 import { listenForMetaCapiEvents } from './workers/metaCapi.worker.js';
 import './workers/stock-sync.worker.js';
 import { startBillingWorker } from './workers/billing.worker.js';
-
-// ⚡ IMPORTAMOS EL HANDLER DEL CRON B2C (AliExpress API)
-import { processCJBatch } from './workers/cj-batch.worker.js';
 
 import { syncCJStock } from './workers/cj-stock.worker.js';
 
@@ -47,7 +47,8 @@ const startWorkers = async () => {
 
     await startBillingWorker();
     console.log('🧾 BillingWorker: Suscripción activa.');
-
+    await setupPubSubInits();
+    console.log('📡 DiscoveryWorker: Suscripción de nichos activa.');
     console.log('📦 Endpoint AliExpress Batch: Listo en /crons/process-orders esperando a Cloud Scheduler.');
 
   } catch (err) {
@@ -110,6 +111,18 @@ app.post('/analyze', async (req, res) => {
 
   return res.json({ message: "Análisis iniciado por lotes", niches_processed: nichesArray, active_queue: activeTasks });
 });
+
+
+// ... (configuración de express) ...
+
+// 1. La ruta que debe llamar tu Cron en Google Cloud Scheduler
+app.post('/api/cron/trigger-discovery', triggerDiscoveryBatch);
+
+// 2. La NUEVA ruta oculta que recibe los Push de Pub/Sub
+app.post('/api/pubsub/process-niche', processPubSubNiche);
+
+// (Tu ruta de órdenes existente)
+app.post('/api/cron/process-orders', processCJBatch);
 
 app.listen(Number(port), '0.0.0.0', () => {
   console.log(`🚀 RavsStore Engine operando en puerto ${port} (Satisfaciendo a Cloud Run)`);

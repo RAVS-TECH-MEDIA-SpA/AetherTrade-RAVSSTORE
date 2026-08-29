@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { pool } from '../lib/db.js'; // Asegúrate de que apunte a tu conexión de Supabase
+import { listenArrayEvents } from 'chart.js/helpers';
 
 export class CJDropshippingService {
   private apiKey = process.env.CJ_API_KEY;
@@ -210,22 +211,46 @@ export class CJDropshippingService {
   async searchProducts(keyword: string): Promise<any[]> {
     const token = await this.getValidToken();
     try {
-      const response = await axios.get(`${this.baseUrl}/product/list`, {
-        params: { keyword, pageNum: 1, pageSize: 50 }, // Traemos los primeros 50 para evaluar
+
+      console.log(`🔍 [CJ Search] Buscando productos para el nicho: "${keyword}" con token válido.`);
+      // ⚡ CORRECCIÓN API V2: Usamos productNameEn en lugar de keyword.
+      // Además, agregamos minPrice: 5 para bloquear baratijas y asegurar tickets más altos.
+      const response = await axios.get(`${this.baseUrl}/product/listV2`, {
+        params: { 
+          keyWord: keyword, 
+          page: 1, 
+          size: 50
+        }, 
         headers: { 'CJ-Access-Token': token }
       });
-      const list = response.data?.data?.list || [];
-      
-      // ⚡ CORRECCIÓN DE MAPEO SEGÚN DOCUMENTACIÓN:
-      // La API de CJ devuelve el identificador como 'id' y el nombre como 'nameEn', 
-      // mientras que los workers esperan 'pid' y 'productNameEn'.
-      return list.map((item: any) => ({
-        ...item,
-        pid: item.id || item.pid,
-        productNameEn: item.nameEn || item.productNameEn || ''
-      }));
+
+      // ⚡ ESCUDO 1: CJ devuelve HTTP 200 pero con código interno de saturación
+      if (response.data?.code === 1600200) {
+        throw new Error("CJ_RATE_LIMIT");
+      }
+// 1. Extraemos de forma segura el arreglo real de productos
+const contentObj = response.data?.data?.content?.[0];
+const productList = contentObj?.productList || [];
+
+// 2. Log de control preciso
+console.log(`✅ [CJ Search] Resultados obtenidos para "${keyword}": ${productList.length} productos.`);
+
+// 3. Mapeo correcto de las propiedades (id ➔ pid, nameEn ➔ productNameEn)
+return productList.map((item: any) => ({
+  ...item,
+  pid: item.id || item.pid,
+  productNameEn: item.nameEn || item.productNameEn || ''
+}));
+
     } catch (error: any) {
-      console.error(`🚨 [CJ Error] Fallo al buscar nicho "${keyword}":`, error.response?.data || error.message);
+      const errorData = error.response?.data || {};
+
+      // ⚡ ESCUDO 2: Axios atrapa la saturación como excepción o la relanzamos desde el try
+      if (errorData.code === 1600200 || error.message === "CJ_RATE_LIMIT") {
+        throw new Error("CJ_RATE_LIMIT");
+      }
+
+      console.error(`🚨 [CJ Error] Fallo al buscar nicho "${keyword}":`, errorData || error.message);
       return [];
     }
   }
