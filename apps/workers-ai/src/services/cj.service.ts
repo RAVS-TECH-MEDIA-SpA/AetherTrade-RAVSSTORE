@@ -269,4 +269,79 @@ return productList.map((item: any) => ({
       return null;
     }
   }
+
+
+  /**
+   * Calcula el flete estimado utilizando la API 2.0 de CJ Dropshipping
+   * Retorna un objeto con la tarifa más barata y los días máximos de tránsito.
+   */
+
+  async getEstimatedFreight(vid: string, endCountryCode: string): Promise<{ price: number, transitDays: number }> {
+    // ⚡ Obtenemos el token dinámico de su sistema
+    const token = await this.getValidToken();
+
+    try {
+      const payload = {
+        startCountryCode: "CN",
+        endCountryCode: endCountryCode,
+        products: [{ quantity: 1, vid: vid }]
+      };
+
+      // ⚡ Inyectamos el token en los headers de la petición POST
+      const response = await axios.post(`${this.baseUrl}/logistic/freightCalculate`, payload, {
+        headers: { 'CJ-Access-Token': token }
+      });
+      
+      const methods = response.data?.data || []; 
+      
+      if (methods.length > 0) {
+        // Encontramos el método con el 'logisticPrice' más bajo
+        const cheapestMethod = methods.reduce((prev: any, curr: any) => {
+          const prevPrice = Number(prev.logisticPrice) || Infinity;
+          const currPrice = Number(curr.logisticPrice) || Infinity;
+          return (currPrice < prevPrice) ? curr : prev;
+        }, { logisticPrice: Infinity });
+
+        if (cheapestMethod.logisticPrice !== Infinity) {
+          const price = Number(cheapestMethod.logisticPrice);
+          let transitDays = 15; // Valor estándar de respaldo
+
+          // Parseamos el string de tiempo (ej. "15-45")
+          if (cheapestMethod.logisticAging) {
+            const parts = cheapestMethod.logisticAging.split('-');
+            
+            if (parts.length === 2) {
+              const minDays = parseInt(parts[0], 10);
+              const maxDays = parseInt(parts[1], 10);
+              
+              if (!isNaN(minDays) && !isNaN(maxDays)) {
+                // 1. Calculamos el promedio entre el mínimo y el máximo
+                const avgDays = Math.ceil((minDays + maxDays) / 2);
+                
+                // 2. Tope comercial: Si el promedio supera los 25 días, lo limitamos a 22.
+                // Esto evita asustar al cliente por márgenes de seguridad irreales de CJ.
+                transitDays = avgDays > 25 ? 22 : avgDays;
+              }
+            } else {
+              // Fallback si la API devuelve un solo número (ej. "20")
+              const maxDays = parseInt(parts[parts.length - 1], 10);
+              if (!isNaN(maxDays)) {
+                transitDays = maxDays > 25 ? 22 : maxDays;
+              }
+            }
+          }
+
+          return { price, transitDays };
+        }
+      }
+      
+      console.warn(`⚠️ CJ no devolvió métodos válidos para VID ${vid}. Usando fallback.`);
+      return { price: 5.00, transitDays: 15 }; 
+
+    } catch (error: any) {
+      // ⚡ Mejoramos el log para atrapar el mensaje exacto de CJ en caso de otro error HTTP
+      console.error(`🚨 Error consultando flete dinámico en CJ para VID ${vid}:`, error.response?.data || error.message);
+      return { price: 5.00, transitDays: 15 }; 
+    }
+  }
 }

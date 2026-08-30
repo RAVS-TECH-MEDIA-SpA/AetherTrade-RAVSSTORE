@@ -2,6 +2,7 @@ import './globals.css';
 import { Metadata } from 'next';
 import Script from 'next/script';
 import MetaPixelInit from '@/components/MetaPixelInit';
+import NextTopLoader from 'nextjs-toploader'; // ⚡ 1. Importamos el TopLoader
 
 export const metadata: Metadata = {
   title: {
@@ -35,7 +36,7 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
-  const pixelId = process.env.NEXT_PUBLIC_FB_PIXEL_ID; // <-- USA SOLO ESTE NOMBRE
+  const pixelId = process.env.NEXT_PUBLIC_FB_PIXEL_ID;
 
   return (
     <html lang="es" className="scroll-smooth">
@@ -59,8 +60,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           }}
         />
         
-       
-        {/* Meta Pixel - CORREGIDO PARA EVITAR SSR RUNTIME ERROR */}
+        {/* Meta Pixel */}
         {pixelId && (
           <>
             <Script
@@ -86,7 +86,19 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         )}
       </head>
       <body className="antialiased">
-        {/* Este componente AHORA solo debe hacer ensureFbcFromUrl() */}
+        {/* ⚡ 2. Inyectamos la barra de carga global aquí */}
+        <NextTopLoader
+          color="#3B82F6" // Cambia este hex por el color principal de tu tienda
+          initialPosition={0.08}
+          crawlSpeed={200}
+          height={3}
+          crawl={true}
+          showSpinner={true} // Muestra un pequeño spinner circular en la esquina superior derecha
+          easing="ease"
+          speed={200}
+          shadow="0 0 10px #3B82F6,0 0 5px #3B82F6"
+        />
+
         <MetaPixelInit />
         
         {children}

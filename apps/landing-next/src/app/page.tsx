@@ -68,7 +68,7 @@ export default async function HomePage() {
   const top10Categories = sortedCategories.slice(0, 10);
   const mainGridProducts = products.filter((p: any) => top10Categories.includes(getCatName(p)));
 
-  // 4. Lógica de Densidad para los carruseles inferiores (De la categoría 11 en adelante)
+ // 4. Lógica de Densidad para los carruseles inferiores (De la categoría 11 en adelante)
   const remainingCategories = sortedCategories.slice(10);
   
   const denseCarousels: { categoryName: string; products: any[] }[] = [];
@@ -76,11 +76,12 @@ export default async function HomePage() {
 
   remainingCategories.forEach(catName => {
     const catProducts = categoryCounts[catName];
-    // Si la categoría tiene 5 o más productos, se gana su propia fila
+    // ⚡ Corrección: Exigimos mínimo 5 productos para fila exclusiva, según requerimiento
     if (catProducts.length >= 5) {
       denseCarousels.push({
         categoryName: catName,
-        products: catProducts
+        // ⚡ UX Guardrail: Topamos la fila exclusiva a 10 para mantener consistencia
+        products: catProducts.slice(0, 10) 
       });
     } else {
       // Si tiene 4 o menos, la sacamos de su fila individual y la mezclamos
@@ -88,12 +89,25 @@ export default async function HomePage() {
     }
   });
 
-  // 5. Si quedaron productos "huérfanos" (categorías pequeñas), creamos un Mega-Carrusel final
+  // 5. ⚡ Lógica de Fragmentación (Chunking) para evitar carruseles eternos
   if (sparseProducts.length > 0) {
-    denseCarousels.push({
-      categoryName: 'Descubre Más Novedades',
-      products: sparseProducts
-    });
+    const MAX_ITEMS_PER_CAROUSEL = 10;
+    
+    // Dividimos el Mega-Array en fragmentos de máximo 10 productos
+    for (let i = 0; i < sparseProducts.length; i += MAX_ITEMS_PER_CAROUSEL) {
+      const chunk = sparseProducts.slice(i, i + MAX_ITEMS_PER_CAROUSEL);
+      
+      // Asignamos un título dinámico para evitar repetir exactamente el mismo texto
+      const chunkNumber = Math.floor(i / MAX_ITEMS_PER_CAROUSEL) + 1;
+      const carouselTitle = chunkNumber === 1 
+        ? 'Descubre Más Novedades' 
+        : `Explora Más Novedades ${chunkNumber}`;
+
+      denseCarousels.push({
+        categoryName: carouselTitle,
+        products: chunk
+      });
+    }
   }
 
   const carouselsData = denseCarousels;
@@ -163,7 +177,6 @@ export default async function HomePage() {
           </div>
         </section>
 
-        <TrustSection countryCode={countryCode} />
 
         <section id="tendencias" className="container mx-auto px-4 py-8 md:py-12">
           <div className="flex items-center justify-between mb-4 md:mb-6">
@@ -194,6 +207,7 @@ export default async function HomePage() {
             ))}
           </section>
         )}
+        <TrustSection countryCode={countryCode} />
 
         <HowItWorks />
         <Warranty />

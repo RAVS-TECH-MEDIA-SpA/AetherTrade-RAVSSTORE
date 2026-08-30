@@ -109,7 +109,34 @@ export async function listenForCandidates() {
         console.warn(`⚠️ [Gemini Warn] Fallo al traducir título, usando original:`, translationError.message);
       }
       
-      const estimatedShipping = 5.00; 
+
+     // ⚡ CÁLCULO DINÁMICO DE ENVÍO Y TIEMPO DE TRÁNSITO
+      let estimatedShipping = 5.00; 
+      let estimatedTransitDays = 15; // ⚡ NUEVA VARIABLE DINÁMICA
+
+      try {
+        const variantList = detail.variants || detail.variantList || [];
+        const firstVid = variantList[0]?.vid || variantList[0]?.id;
+        
+        if (firstVid) {
+          console.log(` 📦 Calculando flete dinámico a ${targetCountry} para VID: ${firstVid}...`);
+          
+          const shippingData = await withTimeout(
+            cjService.getEstimatedFreight(String(firstVid), targetCountry), 
+            15000, 
+            'CJ_FreightCalculate'
+          );
+          
+          if (shippingData.price > 0) {
+            estimatedShipping = shippingData.price;
+            estimatedTransitDays = shippingData.transitDays;
+            console.log(` 🚚 Flete: $${estimatedShipping} USD | Tránsito máximo estimado: ${estimatedTransitDays} días`);
+          }
+        }
+      } catch (shippingErr: any) {
+        console.warn(`⚠️ [Logística Warn] Falló cálculo dinámico: ${shippingErr.message}`);
+      }
+
       const landedCostUsd = Number(detail.sellPrice) + estimatedShipping + config.LAST_MILE_BUFFER;
       const titleForScraping = scraper.cleanProductName(localizedTitle);
       
@@ -173,6 +200,28 @@ export async function listenForCandidates() {
 
       const combinedImages = [...(detail.productImageSet || []).slice(0, 4), ...(extraImages || []).slice(0, 2)];
 
+      // ⚡ NUEVO: Procesamiento asíncrono del HTML de CJ
+      let localizedTechnicalHtml = '';
+      if (detail.description) {
+        console.log(` 🌐 Traduciendo HTML técnico para PID: ${pid}...`);
+        // Escudo de 25s exclusivo para la traducción del DOM
+        try {
+          localizedTechnicalHtml = await withTimeout(
+            gemini.translateHTML(detail.description), 
+            60000, 
+            'Gemini_HTML_Translate'
+          );
+        } catch (htmlErr: any) {
+          console.warn(`⚠️ Falló traducción de HTML, usando original: ${htmlErr.message}`);
+          localizedTechnicalHtml = detail.description; 
+        }
+      }
+
+      // ⚡ Inyectamos la propiedad en el objeto JSONB antes del INSERT
+      if (analysis && analysis.copywriting) {
+        analysis.copywriting.technical_html_localized = localizedTechnicalHtml;
+      }
+
       let rawLocalImages = [];
       try {
         // ⚡ ESCUDO APLICADO: Máximo 45s para descargar y resubir imágenes
@@ -227,7 +276,7 @@ export async function listenForCandidates() {
         }
       }
 
-      const insertQuery = `
+    const insertQuery = `
         INSERT INTO products (
           batch_id, aliexpress_id, title_original, category_id, supplier_id,
           image_url, video_url, local_images, base_cost_usd, shipping_cost_usd, 
@@ -235,10 +284,11 @@ export async function listenForCandidates() {
           vat_rate, rate_to_usd, target_country, status, marketing_copy, 
           ai_verdict, raw_details, estimated_transit_days
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, 'WINNER', $18, $19, $20, 15)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, 'WINNER', $18, $19, $20, $21)
         ON CONFLICT (aliexpress_id, target_country) DO UPDATE SET 
           updated_at = NOW(), status = 'WINNER', raw_details = EXCLUDED.raw_details,
-          video_url = EXCLUDED.video_url, local_images = EXCLUDED.local_images
+          video_url = EXCLUDED.video_url, local_images = EXCLUDED.local_images,
+          estimated_transit_days = EXCLUDED.estimated_transit_days
         RETURNING id;
       `;
 
@@ -249,7 +299,8 @@ export async function listenForCandidates() {
         (analysis.analysis.suggestedPriceLocal / parseFloat(rate_to_usd)),
         analysis.analysis.estimatedRoi, analysis.analysis.netMarginUsd,
         parseFloat(vat_rate), parseFloat(rate_to_usd), targetCountry,
-        JSON.stringify(analysis.copywriting), analysis.analysis.reasoning, JSON.stringify(detail)
+        JSON.stringify(analysis.copywriting), analysis.analysis.reasoning, JSON.stringify(detail),
+        estimatedTransitDays // ⚡ AQUÍ INYECTAMOS EL TIEMPO DINÁMICO EXTRAÍDO (Parámetro $21)
       ]);
       const internalProductId = productRes.rows[0].id;
 

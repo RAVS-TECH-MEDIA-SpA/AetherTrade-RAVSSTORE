@@ -235,4 +235,38 @@ export class GeminiService {
       return '';
     }
   }
+
+  /**
+   * Traduce nodos de texto de un string HTML conservando intactas las etiquetas y atributos.
+   */
+  async translateHTML(rawHtml: string): Promise<string> {
+    if (!rawHtml || rawHtml.trim() === '') return '';
+
+    const prompt = `
+      TAREA ESTRICTA DE PARSEO Y TRADUCCIÓN.
+      Actúa como un procesador de texto automatizado. Traduce los nodos de texto del siguiente código HTML del inglés al español (localización: Chile).
+
+      REGLAS CRÍTICAS:
+      1. Traduce SOLAMENTE los nodos de texto visibles.
+      2. PROHIBIDO alterar, eliminar o modificar cualquier etiqueta HTML (<div>, <p>, <b>, <img>, <br/>, etc.).
+      3. PROHIBIDO alterar los atributos de las etiquetas (src, href, style, class).
+      4. Mantén los saltos de línea originales (\\n).
+      
+      FORMATO DE SALIDA:
+      Devuelve ÚNICAMENTE el código HTML traducido. Cero explicaciones, sin introducciones, sin envolturas markdown como \`\`\`html.
+
+      HTML ORIGINAL:
+      ${rawHtml}
+    `;
+
+    try {
+      const result = await this.generateContentWithRetry(prompt);
+      const textResult = result.response.candidates?.[0]?.content?.parts?.[0]?.text || rawHtml;
+      // Sanitizamos cualquier envoltura residual de markdown que el modelo pueda inyectar
+      return textResult.replace(/```html|```/g, "").trim();
+    } catch (error) {
+      console.warn("⚠️ [Gemini Warn] Falló translateHTML. Retornando HTML original crudo.", error);
+      return rawHtml; // Fallback de seguridad: preservamos el diseño aunque no esté traducido
+    }
+  }
 }

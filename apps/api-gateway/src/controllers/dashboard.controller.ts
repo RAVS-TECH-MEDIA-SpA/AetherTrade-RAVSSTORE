@@ -405,8 +405,8 @@ export const cronTriggerAnalysis = async (req: Request, res: Response) => {
   // 2. Sobrescribir el body con los parámetros forzados para el CRON
   req.body = {
     country: 'CL',
-    nicheLimit: 15,   // Forzamos  nichos
-    eliteLimit: 30,  // Forzamos límite por nicho
+    nicheLimit: 50,   // Forzamos  nichos
+    eliteLimit: 70,  // Forzamos límite por nicho
     niches: ''       // Lo dejamos vacío para que Gemini los genere automáticamente
   };
 

@@ -21,6 +21,7 @@
     "mercadopago": "^2.12.0",
     "next": "^16.2.4",
     "next-auth": "^4.24.15",
+    "nextjs-toploader": "^3.9.17",
     "pg": "^8.20.0",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",

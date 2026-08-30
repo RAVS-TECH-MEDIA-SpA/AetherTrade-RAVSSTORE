@@ -33,7 +33,7 @@ async function evaluarProducto(producto) {
     Evalúa este producto físico (el título puede estar en inglés): "${titulo}"
     Categoría: "${categoria}"
     
-    Tu objetivo es decidir si podemos inventar un "Libro Digital / Guía Práctica" en PDF para venderlo como complemento (up-sell) a $4.990 CLP.
+    Tu objetivo es decidir si podemos inventar un "Libro Digital / Guía Práctica" en PDF para venderlo como complemento (up-sell) a $2.990 CLP.
     
     CRITERIOS (¡Usa tu creatividad publicitaria!):
     - Nicho Mascotas: CASI SIEMPRE ES VIABLE. (Ej: Si es un bebedero -> "Guía de prevención de enfermedades renales felinas". Si es un cepillo -> "Guía de peluquería canina en casa").

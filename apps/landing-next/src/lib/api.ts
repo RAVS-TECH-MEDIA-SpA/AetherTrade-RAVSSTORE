@@ -1,4 +1,3 @@
-// src/lib/api.ts
 export const API_URL = 
   process.env.NEXT_PUBLIC_API_GATEWAY_URL || 
   (process.env.NODE_ENV === 'production' 
@@ -17,26 +16,34 @@ export function processProductPricing(product: any) {
   const baseSuggested = Number(product.suggested_price_local) || 0;
 
   let minVariantPrice = Infinity;
-  let defaultVariantId = null; // ⚡ NUEVO: Para atrapar el ID de la variante más barata
+  let defaultVariantId = null; 
 
-  // 1. RECORRER VARIANTES: Lógica Ultra-Limpia basada estrictamente en la BD
+  // ⚡ SOLUCIÓN EN MEMORIA: Identificar el costo absoluto más bajo como ancla
+  let minAbsoluteCost = 0;
+  if (product.variants && product.variants.length > 0) {
+    const costs = product.variants.map((v: any) => Number(v.additional_cost_usd) || 0);
+    minAbsoluteCost = Math.min(...costs);
+  }
+
+  // 1. RECORRER VARIANTES: Cálculo del diferencial dinámico
   if (product.variants && product.variants.length > 0) {
     product.variants = product.variants.map((v: any) => {
       
-      // Tomamos directamente el delta de la base de datos (que ya está limpio)
-      const extraCostUsd = Number(v.additional_cost_usd) || 0;
+      const rawAbsoluteCost = Number(v.additional_cost_usd) || 0;
+      
+      // ⚡ FIX: Extraemos el verdadero costo adicional restando el ancla
+      const extraCostUsd = Math.max(0, rawAbsoluteCost - minAbsoluteCost);
 
       if (extraCostUsd > 0) {
-        // Si hay costo adicional, lo pasamos a CLP sumando el IVA
+        // Si hay costo adicional real, lo pasamos a CLP sumando el IVA
         const extraCostLocal = extraCostUsd * exchangeRate * 1.19; 
         v.calculated_price_local = getPsychologicalPrice(baseSuggested + extraCostLocal);
       } else {
-        // Cuesta lo mismo, usamos el precio sugerido intacto
+        // Cuesta lo mismo que la variante base, usamos el precio sugerido intacto
         v.calculated_price_local = getPsychologicalPrice(baseSuggested);
       }
 
-      // Calculamos cuál es la variante más barata para mostrar en portada
-      // ⚡ FIX: Atrapamos también el ID (v.id) o el SKU (v.ali_sku_id) de esta variante
+      // Atrapamos el ID y el precio mínimo para la portada
       if (v.calculated_price_local > 0 && v.calculated_price_local < minVariantPrice) {
         minVariantPrice = v.calculated_price_local;
         defaultVariantId = v.id || v.ali_sku_id; 
@@ -53,7 +60,6 @@ export function processProductPricing(product: any) {
     product.calculated_min_price = getPsychologicalPrice(baseSuggested); 
   }
   
-  // ⚡ GUARDAMOS LA VARIANTE POR DEFECTO PARA EL QUICK ADD
   product.default_variant_id = defaultVariantId;
 
   // 3. PRECIO TACHADO Y DESCUENTO
