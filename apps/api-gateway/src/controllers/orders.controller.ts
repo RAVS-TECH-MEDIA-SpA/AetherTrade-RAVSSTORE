@@ -8,7 +8,7 @@ export const createOrder = async (req: Request, res: Response) => {
   try {
     // ⚡ AHORA RECIBIMOS 'items' (EL CARRITO COMPLETO) EN VEZ DE 'product_id'
     const { items, customer_email, customer_name, shipping_address, fbc, fbp, client_user_agent, event_source_url } = req.body;
-
+console.log("🚀 Recibido request de creación de orden con :", req.body);
     // Validación estricta inicial
     if (!items || items.length === 0 || !customer_email || !shipping_address) {
       return res.status(400).json({ error: 'Faltan datos obligatorios para crear la orden' });

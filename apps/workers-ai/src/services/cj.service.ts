@@ -62,6 +62,7 @@ export class CJDropshippingService {
     const token = await this.getValidToken();
     try {
       const response = await axios.post(`${this.baseUrl}/logistic/freightCalculate`, {
+        startCountryCode: 'CN',
         endCountryCode: countryCode,
         products: [
           {
@@ -122,7 +123,7 @@ export class CJDropshippingService {
       firstItem.cj_variant_id,
       firstItem.quantity || 1
     );
-
+console.log('🚀 [CJ Dropshipping] Preparando payload :', orderData, 'con courier:', bestLogistic);
    const payload = {
       orderNumber: String(orderData.order_id), 
       payType: 2, // Se mantiene 2 para deducción automática de billetera
@@ -132,10 +133,12 @@ export class CJDropshippingService {
       shippingProvince: orderData.state_province,
       shippingCity: orderData.city,
       shippingAddress: orderData.street, 
+      shippingAddress2: orderData.details || '',
       houseNumber: String(orderData.number || ''), 
       shippingPhone: orderData.phone || '+56900000000',
       shippingCustomerName: `${orderData.first_name} ${orderData.last_name || ''}`.trim(),
       email: orderData.email || '', 
+      taxId: orderData.document_id || '11111111-1',
       remark: 'Dropshipping order. Please do NOT include any invoices, price tags, receipts, or promotional materials inside or outside the package. Thank you!',
       fromCountryCode: 'CN', 
       platform: 'shopify', // ⚡ Cambiado de 'custom' a 'shopify' para pasar la validación de CJ
@@ -180,32 +183,40 @@ export class CJDropshippingService {
     }
   }
 
-  // 📦 OBTENER INVENTARIO DE UNA VARIANTE (VID)
-  async getVariantStock(vid: string): Promise<number | null> {
-    const token = await this.getValidToken();
-    try {
-      // ⚡ URL exacta entregada por la documentación de CJ
-      const response = await axios.get(`${this.baseUrl}/product/variant/queryByVid`, {
-        params: { vid },
-        headers: { 'CJ-Access-Token': token }
-      });
+  // 📦 OBTENER INVENTARIO DE UNA VARIANTE (VID) - ACTUALIZADO SEGÚN DOCS 2.0
+async getVariantStock(vid: string): Promise<number | null> {
+  const token = await this.getValidToken();
+  try {
+    // 🌟 CORRECCIÓN 1: Endpoint corregido según la documentación oficial de CJ (/product/stock/queryByVid)
+    const response = await axios.get(`${this.baseUrl}/product/stock/queryByVid`, {
+      params: { vid },
+      headers: { 'CJ-Access-Token': token }
+    });
 
-      const data = response.data.data;
+    const dataArray = response.data?.data;
+    
+    // 🌟 CORRECCIÓN 2: Mapeo de la respuesta real. La data de CJ es directamente el array de almacenes.
+    if (dataArray && Array.isArray(dataArray)) {
+      // Buscamos específicamente el inventario en la bodega de China ('CN')
+      const cnInventory = dataArray.find((inv: any) => inv.countryCode === 'CN');
       
-      if (data && data.inventories && Array.isArray(data.inventories)) {
-        // Buscamos específicamente el inventario en la bodega de China ('CN')
-        const cnInventory = data.inventories.find((inv: any) => inv.countryCode === 'CN');
-        
-        if (cnInventory && cnInventory.totalInventory !== undefined) {
-          return Number(cnInventory.totalInventory);
-        }
+      if (cnInventory && cnInventory.totalInventoryNum !== undefined) {
+        return Number(cnInventory.totalInventoryNum); // Retorna la propiedad correcta de los nuevos Docs
       }
-      return 0; // Si el arreglo viene vacío o sin datos válidos, asumimos stock 0 por seguridad
-    } catch (error: any) {
-      console.error(`🚨 [CJ Error] Fallo al consultar stock del VID ${vid}:`, error.response?.data || error.message);
-      return null; // Retornamos null para diferenciar una caída de API de un stock 0 real
+
+      // Fallback: Si no hay bodega en China pero sí en otras locaciones, sumamos el inventario total disponible
+      if (dataArray.length > 0 && dataArray[0].totalInventoryNum !== undefined) {
+        return dataArray.reduce((acc: number, curr: any) => acc + (Number(curr.totalInventoryNum) || 0), 0);
+      }
     }
+    
+    return 0; // Si el arreglo viene vacío o sin datos válidos, asumimos stock 0 por seguridad
+  } catch (error: any) {
+    console.error(`🚨 [CJ Error] Fallo al consultar stock del VID ${vid}:`, error.response?.data || error.message);
+    return null; // Retornamos null para diferenciar una caída de API de un stock 0 real
   }
+}
+
 
   // 🔍 BUSCADOR DE PRODUCTOS (Discovery Worker)
   async searchProducts(keyword: string): Promise<any[]> {

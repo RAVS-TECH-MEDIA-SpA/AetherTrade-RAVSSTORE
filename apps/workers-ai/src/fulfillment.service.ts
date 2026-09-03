@@ -13,7 +13,7 @@ export class FulfillmentService {
       const query = `
         SELECT 
           o.id as order_id, 
-          c.email, c.first_name, 
+          c.email, c.first_name, c.document_id,
           a.street, a.city, a.state_province, a.postal_code, a.country_code,
           i.quantity, 
           p.autods_item_id

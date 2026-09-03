@@ -1,12 +1,41 @@
 import { MercadoPagoConfig, Preference } from 'mercadopago';
 import { pool } from '../database.js'; 
 import { randomUUID } from 'crypto';
+import { z } from 'zod'; // ⚡ 1. Importar Zod
+
+// ⚡ 2. Definir el esquema de validación y limpieza (puedes importar tu diccionario de regiones y comunas aquí)
+const validStates = ["Región Metropolitana", "Biobío", "Valparaíso"]; 
+const validCities = ["Santiago", "Cabrero", "Concepción"]; 
+
+const shippingSchema = z.object({
+  street: z.string().min(2, "La calle es obligatoria").trim(),
+  number: z.string().min(1, "El número es obligatorio").trim(),
+  state: z.string().refine(val => validStates.includes(val), { message: "Región no válida" }),
+  city: z.string().refine(val => validCities.includes(val), { message: "Comuna no válida" }),
+  zip: z.string().trim().default('0000000'),
+  details: z.string().trim().optional().nullable()
+});
 
 const client = new MercadoPagoConfig({ accessToken: process.env.MP_ACCESS_TOKEN || '' });
 
 export class CheckoutService {
 
   async createPreference(orderData: any, trackingData: any = {}) {
+    
+    // ⚡ 3. Validar ANTES de abrir la conexión a la BD
+    let validatedShipping;
+    try {
+      const parseResult = shippingSchema.safeParse(orderData.shippingAddress || {});
+      
+      if (!parseResult.success) {
+        throw new Error(`Datos de envío inválidos: ${parseResult.error.issues.map(i => i.message).join(', ')}`);
+      }
+      validatedShipping = parseResult.data; 
+    } catch (validationError: any) {
+      console.error("❌ Intento de inyección o error de validación:", validationError.message);
+      throw validationError; 
+    }
+
     const dbClient = await pool.connect();
     
     try {
@@ -47,41 +76,48 @@ export class CheckoutService {
 
       // 2. Gestionar el Cliente (Upsert en tabla 'customers')
       const upsertCustomerQuery = `
-        INSERT INTO customers (email, first_name, last_name, phone, is_guest)
-        VALUES ($1, $2, $3, $4, true)
+        INSERT INTO customers (email, first_name, last_name, phone, is_guest, document_id)
+        VALUES ($1, $2, $3, $4, true, $5)
         ON CONFLICT (email) DO UPDATE 
         SET first_name = EXCLUDED.first_name, 
             last_name = EXCLUDED.last_name,
-            phone = EXCLUDED.phone
+            phone = EXCLUDED.phone,
+            document_id = COALESCE(EXCLUDED.document_id, customers.document_id)
         RETURNING id;
       `;
-      // Adaptamos para soportar 'customer' o 'customerInfo'
+
       const customerData = orderData.customer || orderData.customerInfo;
+
+      // Extraemos el document_id buscando en las propiedades más comunes
+      const documentId = customerData.document_id || customerData.rut || customerData.dni || customerData.tax_id || null;
+
       const customerResult = await dbClient.query(upsertCustomerQuery, [
         customerData.email,
         customerData.firstName || customerData.name?.split(' ')[0] || 'Cliente',
         customerData.lastName || customerData.name?.split(' ').slice(1).join(' ') || '',
-        customerData.phone || null
+        customerData.phone || null,
+        documentId // Este mapea correctamente al parámetro $5
       ]);
+
       const customerId = customerResult.rows[0].id;
 
       // ============================================================================
-      // ⚡ 2.5. GUARDAR LA DIRECCIÓN DE ENVÍO PARA AUTODS (CON DETALLES)
+      // ⚡ 2.5. GUARDAR LA DIRECCIÓN DE ENVÍO PARA AUTODS (CON DATOS VALIDADOS)
       // ============================================================================
       const insertAddressQuery = `
         INSERT INTO customer_addresses (customer_id, street, number, city, state_province, postal_code, country_code, details)
         VALUES ($1, $2, $3, $4, $5, $6, 'CL', $7)
         RETURNING id;
       `;
-      const shipping = orderData.shippingAddress || {};
+      
       const addressResult = await dbClient.query(insertAddressQuery, [
         customerId,
-        shipping.street || 'Sin calle',
-        shipping.number || 'S/N',
-        shipping.city || 'Sin ciudad',
-        shipping.state || 'Región Metropolitana',
-        shipping.zip || '0000000',
-        shipping.details || null 
+        validatedShipping.street,
+        validatedShipping.number,
+        validatedShipping.city,
+        validatedShipping.state,
+        validatedShipping.zip,
+        validatedShipping.details || null 
       ]);
       const addressId = addressResult.rows[0].id;
 

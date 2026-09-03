@@ -25,13 +25,12 @@ export async function POST(request: Request) {
         email: customerInfo?.email || 'cliente@ravsstore.com',
         firstName: customerInfo?.name?.split(' ')[0] || customerInfo?.name || 'Cliente',
         lastName: customerInfo?.name?.split(' ').slice(1).join(' ') || 'General',
-        phone: customerInfo?.phone || null
+        phone: customerInfo?.phone || null,
+        document_id:customerInfo?.document_id || customerInfo?.rut || customerInfo?.dni || customerInfo?.tax_id
       },
       shippingAddress: shippingAddress,
       tracking: { fbc, fbp }
     };
-console.log("🚀 Preparado gatewayPayload para /api/checkout:", gatewayPayload);
-console.log("🚀 Preparado gatewayPayload API_URL:", API_URL);
 
     // 2. ⚡ EL CAMBIO CLAVE: Llamamos a /api/checkout del Gateway, NO a /api/orders
     const gatewayRes = await fetch(`${API_URL}/api/checkout`, {
@@ -44,7 +43,6 @@ console.log("🚀 Preparado gatewayPayload API_URL:", API_URL);
       },
       body: JSON.stringify(gatewayPayload)
     });
-console.log("🚀 Respuesta del Gateway:", gatewayRes.ok);
 
     if (!gatewayRes.ok) {
       const errData = await gatewayRes.json().catch(() => ({ error: 'Error desconocido en Gateway' }));
@@ -52,8 +50,8 @@ console.log("🚀 Respuesta del Gateway:", gatewayRes.ok);
     }
 
     const gatewayData = await gatewayRes.json();
-console.log("🚀 Datos recibidos del Gateway:", gatewayData);
     // 3. El Gateway hizo todo el trabajo y nos devuelve el link de Mercado Pago
+    console.log("📥 Datos recibidos del Gateway:", gatewayData);
     return NextResponse.json({ init_point: gatewayData.init_point });
 
   } catch (error: any) {

@@ -426,7 +426,7 @@ export default function ProductGalleryWrapper({ product, guiaDigital }: any) {
               )}
             </div>
 
-            <TechnicalFeatures attributes={product.raw_details?.description || []} />
+            <TechnicalFeatures attributes={marketing.technical_html_localized || product.raw_details?.description || []} />
 
           </div>
         </div>

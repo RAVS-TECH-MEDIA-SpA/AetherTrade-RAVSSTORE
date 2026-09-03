@@ -307,8 +307,8 @@ export const processCJBatch = async (req: Request, res: Response) => {
   try {
     const { rows: orders } = await pool.query(`
       SELECT o.id as order_id, o.total_amount_local, o.total_amount_usd,
-             c.email, c.first_name, c.last_name, c.phone,
-             a.street, a.number, a.city, a.state_province, a.postal_code, a.country_code
+             c.email, c.first_name, c.last_name, c.phone, c.document_id,
+             a.street, a.number, a.city, a.state_province, a.postal_code, a.country_code, a.details
       FROM orders o
       JOIN customers c ON o.customer_id = c.id
       JOIN customer_addresses a ON o.address_id = a.id

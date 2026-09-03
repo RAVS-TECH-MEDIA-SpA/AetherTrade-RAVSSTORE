@@ -3,6 +3,7 @@ import path from 'path';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { MARKET_CONFIG } from './config/constants.js';
+import * as cheerio from 'cheerio';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -239,34 +240,90 @@ export class GeminiService {
   /**
    * Traduce nodos de texto de un string HTML conservando intactas las etiquetas y atributos.
    */
-  async translateHTML(rawHtml: string): Promise<string> {
-    if (!rawHtml || rawHtml.trim() === '') return '';
+
+async translateHTML(rawHtml: string): Promise<string> {
+  if (!rawHtml || rawHtml.trim() === '') return '';
+
+  try {
+    // 1. Cargar el HTML original en Cheerio
+    // const $ = cheerio.load(rawHtml, { decodeEntities: false }, false);
+
+    // 1. Cargar el HTML original en Cheerio con la sintaxis moderna
+      const $ = cheerio.load(rawHtml, {
+        xml: {
+          decodeEntities: false // Evita que transforme tildes y eñes en caracteres extraños
+        }
+      });
+    
+    const textNodes: { index: number; originalText: string; element: any }[] = [];
+    let counter = 0;
+
+    // 2. Recorrer el DOM y extraer solo los nodos de texto que tengan contenido real
+    $('*').each((_, element) => {
+      $(element).contents().each((_, node) => {
+        // Buscamos nodos tipo TEXTO (type 3) que no estén vacíos ni sean solo saltos de línea
+        if (node.type === 'text' && node.data && node.data.trim().length > 0) {
+          // Ignoramos nodos de texto que estén dentro de etiquetas de script o estilos por seguridad
+          const parentTag = $(element).prop('tagName')?.toLowerCase();
+          if (parentTag !== 'script' && parentTag !== 'style') {
+            textNodes.push({
+              index: counter++,
+              originalText: node.data.trim(),
+              element: node // Guardamos la referencia física del nodo para mutarlo después
+            });
+          }
+        }
+      });
+    });
+
+    // Si el HTML no contiene texto traducible (solo imágenes, por ejemplo), lo devolvemos intacto
+    if (textNodes.length === 0) return rawHtml;
+
+    // 3. Preparar los datos limpios para Gemini (Solo strings planos)
+    const payloadToTranslate = textNodes.map(node => ({
+      id: node.index,
+      text: node.originalText
+    }));
 
     const prompt = `
-      TAREA ESTRICTA DE PARSEO Y TRADUCCIÓN.
-      Actúa como un procesador de texto automatizado. Traduce los nodos de texto del siguiente código HTML del inglés al español (localización: Chile).
+      Eres un sistema de traducción automatizado experto en localización para el mercado de e-commerce en Chile.
+      Traduce el siguiente array de textos del inglés al español chileno (ej. usa "Caja de pañuelos" en vez de "Caja de pañuelitos", mantén terminología de retail formal y natural).
 
-      REGLAS CRÍTICAS:
-      1. Traduce SOLAMENTE los nodos de texto visibles.
-      2. PROHIBIDO alterar, eliminar o modificar cualquier etiqueta HTML (<div>, <p>, <b>, <img>, <br/>, etc.).
-      3. PROHIBIDO alterar los atributos de las etiquetas (src, href, style, class).
-      4. Mantén los saltos de línea originales (\\n).
-      
-      FORMATO DE SALIDA:
-      Devuelve ÚNICAMENTE el código HTML traducido. Cero explicaciones, sin introducciones, sin envolturas markdown como \`\`\`html.
+      REGLAS ESTRICTAS:
+      1. Traduce ÚNICAMENTE el campo "text". Preserva el "id" exactamente igual.
+      2. No agregues, quites ni fusiones elementos del array. La salida debe tener el mismo largo.
+      3. Devuelve estrictamente el formato JSON solicitado.
 
-      HTML ORIGINAL:
-      ${rawHtml}
+      DATA A TRADUCIR:
+      ${JSON.stringify(payloadToTranslate)}
     `;
 
-    try {
-      const result = await this.generateContentWithRetry(prompt);
-      const textResult = result.response.candidates?.[0]?.content?.parts?.[0]?.text || rawHtml;
-      // Sanitizamos cualquier envoltura residual de markdown que el modelo pueda inyectar
-      return textResult.replace(/```html|```/g, "").trim();
-    } catch (error) {
-      console.warn("⚠️ [Gemini Warn] Falló translateHTML. Retornando HTML original crudo.", error);
-      return rawHtml; // Fallback de seguridad: preservamos el diseño aunque no esté traducido
-    }
+    // 4. Consumir Gemini usando tu 'jsonModel' configurado globalmente
+    // Pasamos el "this.model" que ya tiene configurado el responseMimeType: "application/json"
+    const result = await this.generateContentWithRetry(prompt);
+    const textResult = result.response.candidates?.[0]?.content?.parts?.[0]?.text || '[]';
+    
+    // Limpiamos posibles envolturas de markdown que la IA agregue por inercia
+    const cleanedJsonText = textResult.replace(/```json|```/g, "").trim();
+    const translatedItems: { id: number; text: string }[] = JSON.parse(cleanedJsonText);
+
+    // 5. Reinyección del texto traducido en el DOM mapeado
+    translatedItems.forEach((item) => {
+      const targetNode = textNodes.find(n => n.index === item.id);
+      if (targetNode && targetNode.element) {
+        // Reemplazamos el texto antiguo por el nuevo manteniendo el espacio/formato circundante
+        targetNode.element.data = item.text;
+      }
+    });
+
+    // 6. Retornar el HTML final completamente reconstruido
+    // .html() nos devuelve el string limpio con las imágenes y clases de Next sin haber sido tocadas por la IA
+    return $.html();
+
+  } catch (error) {
+    console.error("❌ [Cheerio/Gemini Error] Error procesando el HTML:", error);
+    return rawHtml; // Fallback definitivo de seguridad para no romper la app
   }
+}
+
 }

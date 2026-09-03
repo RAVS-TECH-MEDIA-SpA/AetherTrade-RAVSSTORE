@@ -6,7 +6,27 @@ import { ShieldCheck, Truck, CreditCard, ChevronLeft } from 'lucide-react';
 import Link from 'next/link';
 import InitiateCheckoutTracker from './components/InitiateCheckoutTracker';
 import { getMetaCookies } from '@/lib/metaPixel';
-import Script from 'next/script'; // ⚡ Importamos Script de Next.js
+import Script from 'next/script'; 
+
+// ⚡ DICCIONARIO COMPLETO DE REGIONES Y COMUNAS DE CHILE
+const regionesYcomunas = {
+  "Arica y Parinacota": ["Arica", "Camarones", "Putre", "General Lagos"],
+  "Tarapacá": ["Iquique", "Alto Hospicio", "Pozo Almonte", "Camiña", "Colchane", "Huara", "Pica"],
+  "Antofagasta": ["Antofagasta", "Mejillones", "Sierra Gorda", "Taltal", "Calama", "Ollagüe", "San Pedro de Atacama", "Tocopilla", "María Elena"],
+  "Atacama": ["Copiapó", "Caldera", "Tierra Amarilla", "Chañaral", "Diego de Almagro", "Vallenar", "Alto del Carmen", "Freirina", "Huasco"],
+  "Coquimbo": ["La Serena", "Coquimbo", "Andacollo", "La Higuera", "Paihuano", "Vicuña", "Illapel", "Canela", "Los Vilos", "Salamanca", "Ovalle", "Combarbalá", "Monte Patria", "Punitaqui", "Río Hurtado"],
+  "Valparaíso": ["Valparaíso", "Casablanca", "Concón", "Juan Fernández", "Puchuncaví", "Quintero", "Viña del Mar", "Isla de Pascua", "Los Andes", "Calle Larga", "Rinconada", "San Esteban", "La Ligua", "Cabildo", "Papudo", "Petorca", "Zapallar", "Quillota", "Calera", "Hijuelas", "La Cruz", "Nogales", "San Antonio", "Algarrobo", "Cartagena", "El Quisco", "El Tabo", "Santo Domingo", "San Felipe", "Catemu", "Llaillay", "Panquehue", "Putaendo", "Santa María", "Quilpué", "Limache", "Olmué", "Villa Alemana"],
+  "Región Metropolitana": ["Cerrillos", "Cerro Navia", "Conchalí", "El Bosque", "Estación Central", "Huechuraba", "Independencia", "La Cisterna", "La Florida", "La Granja", "La Pintana", "La Reina", "Las Condes", "Lo Barnechea", "Lo Espejo", "Lo Prado", "Macul", "Maipú", "Ñuñoa", "Pedro Aguirre Cerda", "Peñalolén", "Providencia", "Pudahuel", "Quilicura", "Quinta Normal", "Recoleta", "Renca", "San Joaquín", "San Miguel", "San Ramón", "Santiago", "Vitacura", "Puente Alto", "Pirque", "San José de Maipo", "Colina", "Lampa", "Tiltil", "San Bernardo", "Buin", "Calera de Tango", "Paine", "Melipilla", "Alhué", "Curacaví", "María Pinto", "San Pedro", "Talagante", "El Monte", "Isla de Maipo", "Padre Hurtado", "Peñaflor"],
+  "O'Higgins": ["Rancagua", "Codegua", "Coinco", "Coltauco", "Doñihue", "Graneros", "Las Cabras", "Machalí", "Malloa", "Mostazal", "Olivar", "Peumo", "Pichidegua", "Quinta de Tilcoco", "Rengo", "Requínoa", "San Vicente", "Pichilemu", "La Estrella", "Litueche", "Marchihue", "Navidad", "Paredones", "San Fernando", "Chépica", "Chimbarongo", "Lolol", "Nancagua", "Palmilla", "Peralillo", "Placilla", "Pumanque", "Santa Cruz"],
+  "Maule": ["Talca", "Constitución", "Curepto", "Empedrado", "Maule", "Pelarco", "Pencahue", "Río Claro", "San Clemente", "San Rafael", "Cauquenes", "Chanco", "Pelluhue", "Curicó", "Hualañé", "Licantén", "Molina", "Rauco", "Romeral", "Sagrada Familia", "Teno", "Vichuquén", "Linares", "Colbún", "Longaví", "Parral", "Retiro", "San Javier", "Villa Alegre", "Yerbas Buenas"],
+  "Ñuble": ["Cobquecura", "Coelemu", "Ninhue", "Portezuelo", "Quirihue", "Ránquil", "Treguaco", "Bulnes", "Chillán Viejo", "Chillán", "El Carmen", "Pemuco", "Pinto", "Quillón", "San Ignacio", "Yungay", "Coihueco", "Ñiquén", "San Carlos", "San Fabián", "San Nicolás"],
+  "Biobío": ["Concepción", "Coronel", "Chiguayante", "Florida", "Hualqui", "Lota", "Penco", "San Pedro de la Paz", "Santa Juana", "Talcahuano", "Tomé", "Hualpén", "Lebu", "Arauco", "Cañete", "Contulmo", "Curanilahue", "Los Álamos", "Tirúa", "Los Ángeles", "Antuco", "Cabrero", "Laja", "Mulchén", "Nacimiento", "Negrete", "Quilaco", "Quilleco", "San Rosendo", "Santa Bárbara", "Tucapel", "Yumbel", "Alto Biobío"],
+  "La Araucanía": ["Temuco", "Carahue", "Cunco", "Curarrehue", "Freire", "Galvarino", "Gorbea", "Lautaro", "Loncoche", "Melipeuco", "Nueva Imperial", "Padre las Casas", "Perquenco", "Pitrufquén", "Pucón", "Saavedra", "Teodoro Schmidt", "Toltén", "Vilcún", "Villarrica", "Cholchol", "Angol", "Collipulli", "Curacautín", "Ercilla", "Lonquimay", "Los Sauces", "Lumaco", "Purén", "Renaico", "Traiguén", "Victoria"],
+  "Los Ríos": ["Valdivia", "Corral", "Lanco", "Los Lagos", "Máfil", "Mariquina", "Paillaco", "Panguipulli", "La Unión", "Futrono", "Lago Ranco", "Río Bueno"],
+  "Los Lagos": ["Puerto Montt", "Calbuco", "Cochamó", "Fresia", "Frutillar", "Los Muermos", "Llanquihue", "Puerto Varas", "Castro", "Ancud", "Chonchi", "Curaco de Vélez", "Dalcahue", "Puqueldón", "Queilén", "Quellón", "Quemchi", "Quinchao", "Osorno", "Puerto Octay", "Purranque", "Puyehue", "Río Negro", "San Juan de la Costa", "San Pablo", "Chaitén", "Futaleufú", "Hualaihué", "Palena"],
+  "Aysén": ["Coihaique", "Lago Verde", "Aysén", "Cisnes", "Guaitecas", "Cochrane", "O'Higgins", "Tortel", "Chile Chico", "Río Ibáñez"],
+  "Magallanes": ["Punta Arenas", "Laguna Blanca", "Río Verde", "San Gregorio", "Cabo de Hornos", "Antártica", "Porvenir", "Primavera", "Timaukel", "Natales", "Torres del Paine"]
+};
 
 // ⚡ UTILIDADES DE NORMALIZACIÓN Y VALIDACIÓN
 const formatRut = (rut: string) => {
@@ -34,26 +54,29 @@ const isValidRut = (rut: string) => {
 
 const cleanText = (text: string) => text.trim().replace(/[<>]/g, '');
 
-// ⚡ MAPEO DE REGIONES DE GOOGLE A TUS OPCIONES
-const mapGoogleRegionToLocal = (googleRegion: string) => {
-  const g = googleRegion.toLowerCase();
+// Función para quitar acentos y pasar a minúsculas (ideal para comparar)
+const normalizeString = (str: string) => 
+  str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+
+const mapGoogleRegionToLocal = (googleRegion: string): keyof typeof regionesYcomunas => {
+  const g = normalizeString(googleRegion);
   if (g.includes('metropolitana')) return 'Región Metropolitana';
-  if (g.includes('valparaíso') || g.includes('valparaiso')) return 'Valparaíso';
-  if (g.includes('biobío') || g.includes('bío bío') || g.includes('bio bio')) return 'Biobío';
+  if (g.includes('valparaiso')) return 'Valparaíso';
+  if (g.includes('biobio') || g.includes('bio bio')) return 'Biobío';
   if (g.includes('arica')) return 'Arica y Parinacota';
-  if (g.includes('tarapacá') || g.includes('tarapaca')) return 'Tarapacá';
+  if (g.includes('tarapaca')) return 'Tarapacá';
   if (g.includes('antofagasta')) return 'Antofagasta';
   if (g.includes('atacama')) return 'Atacama';
   if (g.includes('coquimbo')) return 'Coquimbo';
   if (g.includes('higgins')) return "O'Higgins";
   if (g.includes('maule')) return 'Maule';
-  if (g.includes('ñuble') || g.includes('nuble')) return 'Ñuble';
-  if (g.includes('araucanía') || g.includes('araucania')) return 'La Araucanía';
-  if (g.includes('ríos') || g.includes('rios')) return 'Los Ríos';
+  if (g.includes('nuble')) return 'Ñuble';
+  if (g.includes('araucania')) return 'La Araucanía';
+  if (g.includes('rios')) return 'Los Ríos';
   if (g.includes('lagos')) return 'Los Lagos';
-  if (g.includes('aysén') || g.includes('aysen')) return 'Aysén';
+  if (g.includes('aysen')) return 'Aysén';
   if (g.includes('magallanes')) return 'Magallanes';
-  return 'Región Metropolitana'; // Default fallback
+  return 'Región Metropolitana'; 
 };
 
 declare global {
@@ -69,7 +92,6 @@ export default function CheckoutPage() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [rutError, setRutError] = useState('');
 
-  // ⚡ Referencia para el input de Google Maps
   const addressInputRef = useRef<HTMLInputElement>(null);
 
   const [shippingData, setShippingData] = useState({
@@ -80,19 +102,18 @@ export default function CheckoutPage() {
     phone: '+569',
     address: '',
     details: '',
-    city: '',
+    city: '', // Ahora inicia vacío para forzar la selección
     region: 'Región Metropolitana'
   });
 
   useEffect(() => { setIsMounted(true); }, []);
 
-  // ⚡ Inicializa Google Autocomplete una vez que el script se carga
   const initGoogleAutocomplete = () => {
     if (!addressInputRef.current || !window.google) return;
 
     const autocomplete = new window.google.maps.places.Autocomplete(addressInputRef.current, {
-      componentRestrictions: { country: "cl" }, // Restringe a Chile
-      fields: ["address_components", "formatted_address"],
+      componentRestrictions: { country: "cl" },
+      fields: ["address_components", "formatted_address", "name"],
       types: ["address"],
     });
 
@@ -102,29 +123,39 @@ export default function CheckoutPage() {
 
       let street = "";
       let number = "S/N";
-      let city = "";
-      let region = "Región Metropolitana";
+      let googleCity = "";
+      let googleRegion = "Región Metropolitana";
 
-      // Desglosamos la data que nos envía Google
       place.address_components.forEach((component: any) => {
         const types = component.types;
         if (types.includes("route")) street = component.long_name;
         if (types.includes("street_number")) number = component.long_name;
-        if (types.includes("locality") || types.includes("administrative_area_level_3")) city = component.long_name;
-        if (types.includes("administrative_area_level_1")) region = component.long_name;
+        if (types.includes("locality") || types.includes("administrative_area_level_3")) googleCity = component.long_name;
+        if (types.includes("administrative_area_level_1")) googleRegion = component.long_name;
       });
 
-      const fullStreet = number !== "S/N" ? `${street} ${number}` : street;
-      const mappedRegion = mapGoogleRegionToLocal(region);
+      const fullStreet = street 
+        ? (number !== "S/N" ? `${street} ${number}` : street) 
+        : (place.name || addressInputRef.current?.value || "");
+        
+      const mappedRegion = mapGoogleRegionToLocal(googleRegion);
+      
+      // ⚡ Intentamos hacer match exacto (sin acentos) entre la comuna de Google y nuestra lista
+      const comunasDisponibles = regionesYcomunas[mappedRegion];
+      let matchedComuna = "";
+      
+      if (googleCity) {
+        const normalizedGoogleCity = normalizeString(googleCity);
+        matchedComuna = comunasDisponibles.find(c => normalizeString(c) === normalizedGoogleCity) || "";
+      }
 
       setShippingData(prev => ({
         ...prev,
         address: fullStreet,
-        city: city,
-        region: mappedRegion
+        region: mappedRegion,
+        city: matchedComuna // Si no hace match, queda vacío y obliga al usuario a elegir del select
       }));
 
-      // Forzamos el valor visible del input
       if (addressInputRef.current) {
         addressInputRef.current.value = fullStreet;
       }
@@ -136,42 +167,41 @@ export default function CheckoutPage() {
     style: 'currency', currency: 'CLP'
   }).format(total);
 
- const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     let { name, value } = e.target;
     
     if (name === 'rut') {
       value = formatRut(value);
-      setRutError(''); // Limpia el error mientras escribe
+      setRutError(''); 
     }
 
-    // ⚡ FORMATEO INTELIGENTE DEL TELÉFONO
     if (name === 'phone') {
-      // 1. Dejamos solo los números puros
       let digits = value.replace(/\D/g, '');
-      
-      // 2. Si el usuario pegó su número con el 569 incluido, se lo quitamos temporalmente para no duplicarlo
       if (digits.startsWith('569')) digits = digits.slice(3);
       else if (digits.startsWith('56')) digits = digits.slice(2);
       else if (digits.startsWith('9')) digits = digits.slice(1);
-      
-      // 3. Forzamos el +569 al inicio y limitamos a 8 dígitos adicionales
       value = '+569' + digits.slice(0, 8);
     }
     
-    setShippingData({ ...shippingData, [name]: value });
+    // ⚡ Si el usuario cambia la región manualmente, limpiamos la comuna para evitar discordancias
+    if (name === 'region') {
+      setShippingData(prev => ({ ...prev, region: value, city: '' }));
+      return;
+    }
+    
+    setShippingData(prev => ({ ...prev, [name]: value }));
   };
 
-  // ⚡ NUEVO: Valida el RUT apenas el usuario hace clic fuera de la casilla
   const handleRutBlur = () => {
-    if (!shippingData.rut) return; // Si está vacío, no hace nada
-    
+    if (!shippingData.rut) return;
     const cleanRutNumber = shippingData.rut.replace(/\./g, '');
     if (!isValidRut(cleanRutNumber)) {
       setRutError('El RUT ingresado no es válido.');
     } else {
-      setRutError(''); // Lo limpia si lo corrigió
+      setRutError(''); 
     }
   };
+  
   const handlePayment = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -183,6 +213,11 @@ export default function CheckoutPage() {
     }
     if (shippingData.phone.length < 8) {
       alert("El número de teléfono es muy corto.");
+      return;
+    }
+    // ⚡ Validación extra para asegurar que seleccionaron una comuna
+    if (!shippingData.city) {
+      alert("Por favor, selecciona tu comuna.");
       return;
     }
 
@@ -206,7 +241,7 @@ export default function CheckoutPage() {
           city: cleanText(shippingData.city),
           state: shippingData.region,
           zip: "0000000",
-          details: cleanText(shippingData.details) // ⚡ NUEVO DATO ENVIADO AL BACKEND
+          details: cleanText(shippingData.details)
         },
         items: items.map(item => ({
           product_id: item.productId, 
@@ -220,7 +255,7 @@ export default function CheckoutPage() {
         clientUserAgent: navigator.userAgent,
         eventSourceUrl: window.location.href
       };
-
+      
       const response = await fetch(baseUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -240,7 +275,6 @@ export default function CheckoutPage() {
       window.location.href = link_de_pago;
 
     } catch (error: any) {
-      console.error("❌ Error en Checkout:", error.message || error);
       alert(`Hubo un problema al procesar el pago: ${error.message}`);
     } finally {
       setIsProcessing(false);
@@ -261,11 +295,13 @@ export default function CheckoutPage() {
     );
   }
 
+  // Obtenemos las comunas de la región actualmente seleccionada
+  const comunasDisponibles = regionesYcomunas[shippingData.region as keyof typeof regionesYcomunas] || [];
+
   return (
     <div className="min-h-screen bg-[#020617] text-white selection:bg-violet-500/30">
       <InitiateCheckoutTracker products={items.map(i => ({ id: i.productId }))} total={total} />
 
-      {/* ⚡ CARGA EL SCRIPT DE GOOGLE MAPS DE FORMA OPTIMIZADA */}
       <Script 
         src={`https://maps.googleapis.com/maps/api/js?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY}&libraries=places`}
         strategy="afterInteractive"
@@ -311,7 +347,7 @@ export default function CheckoutPage() {
                     <input required type="text" name="lastName" minLength={2} value={shippingData.lastName} onChange={handleInputChange} placeholder="Apellidos" className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-violet-500 transition-all" />
                   </div>
                   
-                <div>
+                  <div>
                     <input 
                       id="rut-input" 
                       required 
@@ -326,13 +362,15 @@ export default function CheckoutPage() {
                     {rutError && <p className="text-red-400 text-xs mt-1 ml-1">{rutError}</p>}
                   </div>
 
-                  {/* ⚡ BUSCADOR DE GOOGLE PLACES */}
                   <div>
                     <input 
                       ref={addressInputRef}
                       required 
                       type="text" 
-                      placeholder="Busca tu dirección (Ej: Providencia 123)..." 
+                      name="address" 
+                      value={shippingData.address} 
+                      onChange={handleInputChange} 
+                      placeholder="Busca tu dirección (Ej: Providencia 123) o escríbela manualmente..." 
                       className="w-full bg-white/5 border border-violet-500/50 rounded-xl px-4 py-3 text-white placeholder-slate-400 focus:outline-none focus:border-violet-400 focus:ring-1 focus:ring-violet-400 transition-all" 
                     />
                     <p className="text-[10px] text-slate-500 mt-1 ml-1">Powered by Google Maps</p>
@@ -347,25 +385,31 @@ export default function CheckoutPage() {
                       className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-violet-500 transition-all" 
                     />
                   </div>
+
+                  {/* ⚡ AQUI REEMPLAZAMOS EL INPUT DE COMUNA POR LOS DOS SELECTS */}
                   <div className="grid grid-cols-2 gap-4">
-                    <input required type="text" name="city" value={shippingData.city} onChange={handleInputChange} placeholder="Ciudad / Comuna" className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-violet-500 transition-all" />
-                    <select name="region" value={shippingData.region} onChange={handleInputChange} className="w-full bg-[#0a0f24] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-violet-500 transition-all appearance-none">
-                      <option value="Región Metropolitana">Región Metropolitana</option>
-                      <option value="Arica y Parinacota">Arica y Parinacota</option>
-                      <option value="Tarapacá">Tarapacá</option>
-                      <option value="Antofagasta">Antofagasta</option>
-                      <option value="Atacama">Atacama</option>
-                      <option value="Coquimbo">Coquimbo</option>
-                      <option value="Valparaíso">Valparaíso</option>
-                      <option value="O'Higgins">O'Higgins</option>
-                      <option value="Maule">Maule</option>
-                      <option value="Ñuble">Ñuble</option>
-                      <option value="Biobío">Biobío</option>
-                      <option value="La Araucanía">La Araucanía</option>
-                      <option value="Los Ríos">Los Ríos</option>
-                      <option value="Los Lagos">Los Lagos</option>
-                      <option value="Aysén">Aysén</option>
-                      <option value="Magallanes">Magallanes</option>
+                    <select 
+                      name="region" 
+                      value={shippingData.region} 
+                      onChange={handleInputChange} 
+                      className="w-full bg-[#0a0f24] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-violet-500 transition-all appearance-none"
+                    >
+                      {Object.keys(regionesYcomunas).map(reg => (
+                        <option key={reg} value={reg}>{reg}</option>
+                      ))}
+                    </select>
+
+                    <select 
+                      required
+                      name="city" 
+                      value={shippingData.city} 
+                      onChange={handleInputChange} 
+                      className="w-full bg-[#0a0f24] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-violet-500 transition-all appearance-none"
+                    >
+                      <option value="" disabled>Selecciona tu comuna...</option>
+                      {comunasDisponibles.map((comuna) => (
+                        <option key={comuna} value={comuna}>{comuna}</option>
+                      ))}
                     </select>
                   </div>
                 </div>
@@ -373,7 +417,6 @@ export default function CheckoutPage() {
             </div>
           </div>
 
-          {/* ... (Tu Columna Derecha del Resumen se mantiene igual) ... */}
           <div className="lg:w-[450px]">
             <div className="bg-slate-900/60 border border-white/5 rounded-[2rem] p-8 space-y-8 sticky top-28 shadow-2xl backdrop-blur-xl">
               <h2 className="text-xl font-black uppercase tracking-widest italic border-b border-white/10 pb-4">Resumen</h2>
