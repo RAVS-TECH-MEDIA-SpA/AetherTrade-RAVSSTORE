@@ -21,7 +21,8 @@ console.log("🚀 Recibido request de Checkout con orderData:", orderData);
       userAgent: req.headers['user-agent'] || '',
       // Capturamos cookies de Facebook si Express tiene cookie-parser, o desde el body como fallback
       fbc: req.cookies?._fbc || orderData.tracking?.fbc || null, 
-      fbp: req.cookies?._fbp || orderData.tracking?.fbp || null  
+      fbp: req.cookies?._fbp || orderData.tracking?.fbp || null,
+      abandonedCartConsent: orderData.abandonedCartConsent === true
     };
 console.log("llamando a createPreference con orderData y trackingData:", orderData, trackingData);
     // ⚡ FIX: Le pasamos la orden Y la huella digital (trackingData)

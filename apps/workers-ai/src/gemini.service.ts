@@ -237,6 +237,40 @@ export class GeminiService {
     }
   }
 
+  async generateCartRecoveryCopy(
+    customerName: string,
+    items: Array<{ title: string; quantity: number; price: number }>,
+    total: number
+  ): Promise<{ subject: string; opening: string }> {
+    const prompt = `
+      Redacta el primer correo de recuperación de carrito de RAVSSTORE en español de Chile.
+      Debe ser breve, cálido, persuasivo y ayudar a retomar la compra sin presión.
+      No inventes descuentos, escasez, plazos de entrega ni características. No incluyas HTML.
+      Cliente: ${customerName}
+      Productos y cantidades: ${JSON.stringify(items)}
+      Total informado: ${total} CLP
+      Devuelve solo JSON con "subject" y "opening".`;
+
+    try {
+      const result = await this.generateContentWithRetry(prompt, 3);
+      const raw = result.response.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
+      const parsed = JSON.parse(raw.replace(/```json|```/g, '').trim());
+      if (typeof parsed.subject !== 'string' || typeof parsed.opening !== 'string') {
+        throw new Error('Respuesta inválida para el correo de recuperación.');
+      }
+      return {
+        subject: parsed.subject.slice(0, 120),
+        opening: parsed.opening.slice(0, 600)
+      };
+    } catch (error) {
+      console.error('Error generando copy para carrito abandonado:', error);
+      return {
+        subject: '¿Quieres continuar con tu compra en RAVSSTORE?',
+        opening: `Hola ${customerName}, guardamos los productos que estabas revisando para que puedas retomar tu compra cuando quieras.`
+      };
+    }
+  }
+
   /**
    * Traduce nodos de texto de un string HTML conservando intactas las etiquetas y atributos.
    */

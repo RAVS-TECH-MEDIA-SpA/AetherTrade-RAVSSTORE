@@ -12,6 +12,8 @@ import { handleCheckout } from './controllers/checkoutController.js';
 import { handleMPWebhook } from './webhooks/webhook.controller.js';
 import { createOrder } from './controllers/orders.controller.js'; 
 import { generateFacebookFeed } from './controllers/feed.controller.js';
+import { handleSalesChat } from './controllers/chat.controller.js';
+import { getCartRecovery } from './controllers/orders.controller.js';
 
 const router = Router();
 
@@ -43,6 +45,8 @@ router.post('/analyze', triggerAnalysis);
 router.post('/orders', createOrder);
 
 router.post('/checkout', handleCheckout);
+router.post('/chat/message', handleSalesChat);
+router.get('/orders/recover/:token', getCartRecovery);
 
 router.post('/webhooks/mercadopago', handleMPWebhook);
 

@@ -140,3 +140,53 @@ console.log("🚀 Recibido request de creación de orden con :", req.body);
     client.release();
   }
 };
+
+export const getCartRecovery = async (req: Request, res: Response) => {
+  const token = String(req.params.token || '');
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(token)) {
+    return res.status(404).json({ error: 'Enlace de recuperación inválido o vencido.' });
+  }
+
+  try {
+    const orderResult = await pool.query(`
+      SELECT id
+      FROM orders
+      WHERE client_tracking_data->>'cart_recovery_token' = $1
+        AND client_tracking_data->>'abandoned_cart_consent' = 'true'
+        AND status = 'PENDING_PAYMENT'
+        AND created_at >= NOW() - INTERVAL '48 hours'
+      LIMIT 1
+    `, [token]);
+    if (orderResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Enlace de recuperación inválido o vencido.' });
+    }
+
+    const itemsResult = await pool.query(`
+      SELECT
+        COALESCE(p.id, g.id) AS product_id,
+        oi.variant_id,
+        COALESCE(p.marketing_copy->>'title_localized', p.title_original, g.titulo) AS title,
+        COALESCE(pv.image_url, p.image_url, '') AS image_url,
+        oi.unit_price_local AS price,
+        oi.quantity,
+        pv.color,
+        pv.size,
+        oi.guia_id IS NOT NULL AS is_digital
+      FROM order_items oi
+      LEFT JOIN products p ON p.id = oi.product_id
+      LEFT JOIN guias_digitales g ON g.id = oi.guia_id
+      LEFT JOIN product_variants pv ON pv.id = oi.variant_id
+      WHERE oi.order_id = $1 AND (oi.product_id IS NOT NULL OR oi.guia_id IS NOT NULL)
+      ORDER BY oi.id
+    `, [orderResult.rows[0].id]);
+
+    if (itemsResult.rows.length === 0) {
+      return res.status(404).json({ error: 'El carrito ya no está disponible.' });
+    }
+
+    return res.json({ items: itemsResult.rows });
+  } catch (error) {
+    console.error('Error recuperando carrito abandonado:', error);
+    return res.status(500).json({ error: 'No se pudo recuperar el carrito.' });
+  }
+};

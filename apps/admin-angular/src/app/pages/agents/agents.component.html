@@ -1,0 +1,88 @@
+<main class="min-h-screen w-[calc(100%-256px)] space-y-6 bg-[#0d1117] p-8 ml-64 text-white">
+  <header>
+    <p class="text-xs font-black uppercase tracking-[0.2em] text-[#00f2ff]">Aether Trade · Operations</p>
+    <h1 class="mt-2 text-3xl font-black italic">AI Agents</h1>
+    <p class="mt-2 text-sm text-[#8b949e]">Prueba el asistente de catálogo y revisa cómo opera la recuperación de carritos.</p>
+  </header>
+
+  <section class="grid gap-6 xl:grid-cols-[minmax(0,1.5fr)_minmax(280px,1fr)]">
+    <div class="flex min-h-[620px] flex-col overflow-hidden rounded-2xl border border-[#30363d] bg-[#161b22]">
+      <div class="flex flex-wrap items-center justify-between gap-3 border-b border-[#30363d] p-5">
+        <div>
+          <h2 class="font-bold">Asistente de ventas y soporte</h2>
+          <p class="mt-1 text-xs text-[#8b949e]">Responde con catálogo y precios vigentes del mercado elegido.</p>
+        </div>
+        <div class="flex gap-2">
+          <select [(ngModel)]="country" class="rounded-lg border border-[#30363d] bg-[#0d1117] px-3 py-2 text-xs">
+            <option value="CL">Chile · CLP</option>
+            <option value="MX">México · MXN</option>
+          </select>
+          <select [(ngModel)]="mode" class="rounded-lg border border-[#30363d] bg-[#0d1117] px-3 py-2 text-xs">
+            <option value="sales">Ventas</option>
+            <option value="support">Soporte</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="flex-1 space-y-3 overflow-y-auto p-5" aria-live="polite">
+        <p *ngIf="messages.length === 0" class="rounded-xl bg-[#0d1117] p-4 text-sm text-[#c9d1d9]">
+          Escribe una consulta para probar recomendaciones, respuestas de soporte y límites del catálogo.
+        </p>
+        <div *ngFor="let item of messages" [class]="item.role === 'user' ? 'ml-12' : 'mr-8'">
+          <p class="whitespace-pre-wrap rounded-xl p-3 text-sm"
+             [ngClass]="item.role === 'user' ? 'bg-[#1f6feb] text-white' : 'bg-[#0d1117] text-[#c9d1d9]'">{{item.text}}</p>
+          <div *ngFor="let product of item.products" class="mt-2 rounded-xl border border-[#30363d] bg-[#0d1117] p-3">
+            <p class="text-sm font-bold">{{product.title}}</p>
+            <p class="mt-1 text-xs text-[#00f2ff]">{{product.price | number:'1.0-0'}} {{product.currency}}</p>
+          </div>
+        </div>
+        <p *ngIf="isSending" class="text-xs text-[#8b949e]">El agente está respondiendo…</p>
+        <p *ngIf="error" class="text-xs text-red-400">{{error}}</p>
+      </div>
+
+      <form (ngSubmit)="sendMessage()" class="flex gap-3 border-t border-[#30363d] p-4">
+        <input name="message" [(ngModel)]="message" maxlength="700" placeholder="Prueba una pregunta de cliente..."
+               class="min-w-0 flex-1 rounded-xl border border-[#30363d] bg-[#0d1117] px-4 py-3 text-sm outline-none focus:border-[#00f2ff]">
+        <button type="submit" [disabled]="isSending || !message.trim()"
+                class="rounded-xl bg-[#238636] px-5 text-sm font-bold disabled:opacity-50">Enviar</button>
+      </form>
+    </div>
+
+    <aside class="space-y-4">
+      <article class="rounded-2xl border border-[#30363d] bg-[#161b22] p-5">
+        <div class="flex items-center gap-3">
+          <span class="material-icons text-[#00f2ff]">shopping_cart</span>
+          <h2 class="font-bold">Recuperación de carrito</h2>
+        </div>
+        <p class="mt-3 text-sm leading-6 text-[#8b949e]">
+          Un único recordatorio por correo, después de 2 horas y antes de 24 horas. Solo se envía
+          cuando el cliente marca el consentimiento opcional en checkout; el enlace restaura el carrito
+          y vence a las 48 horas.
+        </p>
+        <p class="mt-4 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200">
+          Requiere credenciales de Vertex AI y Resend en el entorno de Workers AI.
+        </p>
+      </article>
+
+      <article class="rounded-2xl border border-[#30363d] bg-[#161b22] p-5">
+        <div class="flex items-center gap-3">
+          <span class="material-icons text-[#00f2ff]">campaign</span>
+          <h2 class="font-bold">Meta · Catálogo y conversiones</h2>
+        </div>
+        <p class="mt-3 text-sm leading-6 text-[#8b949e]">
+          El feed y los eventos Pixel/CAPI están preparados para CL y MX. La creación y activación
+          de campañas pagadas requiere conectar Meta Marketing API y aprobar presupuesto por mercado.
+        </p>
+      </article>
+
+      <article class="rounded-2xl border border-[#30363d] bg-[#161b22] p-5">
+        <h2 class="font-bold">Próximos agentes recomendados</h2>
+        <ul class="mt-3 space-y-2 text-sm text-[#8b949e]">
+          <li>• Scout estacional por país con señales de demanda y competencia.</li>
+          <li>• Guardián de margen, stock CJ y plazos antes de publicar anuncios.</li>
+          <li>• Copiloto de creatividades Meta con pruebas A/B y control de CPA.</li>
+        </ul>
+      </article>
+    </aside>
+  </section>
+</main>

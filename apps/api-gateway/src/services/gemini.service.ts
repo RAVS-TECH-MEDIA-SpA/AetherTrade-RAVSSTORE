@@ -33,6 +33,48 @@ export class GeminiService {
       temperature: 0.8, 
     } 
   });
+  private chatModel = this.vertexAI.getGenerativeModel({
+    model: 'gemini-2.5-flash',
+    generationConfig: { temperature: 0.65 }
+  });
+
+  async answerSalesChat(
+    message: string,
+    storeName: string,
+    catalog: Array<Record<string, unknown>>,
+    history: Array<{ role: 'user' | 'assistant'; text: string }> = [],
+    mode: 'sales' | 'support' = 'sales'
+  ): Promise<string> {
+    const roleInstruction = mode === 'support'
+      ? 'Prioriza empatía, respuestas claras y resolución de dudas. Si la consulta requiere datos de una orden o un pago, deriva a soporte humano.'
+      : 'Asesora para elegir y comprar. Persuade con beneficios comprobables, sin presión ni manipulación.';
+    const systemInstruction = `
+      Eres la asesora virtual de ventas y soporte de ${storeName}. Responde en español natural,
+      con energía y cercanía. ${roleInstruction}
+      El catálogo adjunto es la única fuente autorizada para productos, precios, disponibilidad
+      y plazos. No inventes stock, descuentos, garantías, urgencia ni características. Si no
+      hay una coincidencia, dilo con claridad y pregunta qué necesita el cliente.
+      Puedes orientar sobre cómo comprar y envíos generales, pero no tienes acceso a órdenes,
+      pagos ni datos privados: deriva esas consultas a soporte humano.
+      Recomienda como máximo dos productos relevantes, explica brevemente por qué encajan y
+      termina con una pregunta concreta que facilite el siguiente paso.
+      No generes URLs ni enlaces. La tienda mostrará tarjetas de producto verificadas aparte.
+
+      CATÁLOGO DISPONIBLE PARA ESTA CONSULTA:
+      ${JSON.stringify(catalog)}
+    `;
+    const chat = this.chatModel.startChat({
+      systemInstruction: { role: 'system', parts: [{ text: systemInstruction }] },
+      history: history.map(turn => ({
+        role: turn.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: turn.text }]
+      }))
+    });
+    const result = await chat.sendMessage(message);
+    const reply = result.response.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+    if (!reply) throw new Error('El asistente no generó una respuesta.');
+    return reply;
+  }
 
  async generateDynamicNiches(country: string, limit: number, excludedNiches: string[] = []): Promise<string[]> {
     const now = new Date();

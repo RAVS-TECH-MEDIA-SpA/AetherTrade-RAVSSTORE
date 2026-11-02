@@ -23,6 +23,7 @@ navItems: NavItem[] = [
   { icon: 'dashboard', label: 'Dashboard', route: '/dashboard' },
   { icon: 'rocket_launch', label: 'Scouting', route: '/scouting' }, // El "Corazón" de la búsqueda
   { icon: 'inventory_2', label: 'Inventory', route: '/inventory' }, // Los 77 productos actuales
+  { icon: 'smart_toy', label: 'AI Agents', route: '/agents' },
   { icon: 'query_stats', label: 'Trends', route: '/trends' },
   { icon: 'settings', label: 'Settings', route: '/settings' }
 ];

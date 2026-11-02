@@ -83,3 +83,69 @@ export const searchProducts = async (queryStr: string, country?: string) => {
   const res = await pool.query(query, values);
   return res.rows;
 };
+
+export const findProductsForAssistant = async (queryStr: string, country: string) => {
+  const stopWords = new Set([
+    'busco', 'quiero', 'necesito', 'algo', 'para', 'con', 'que', 'tiene',
+    'tienen', 'producto', 'productos', 'recomienda', 'recomendar', 'por',
+    'favor', 'hola', 'una', 'uno', 'unos', 'unas', 'del', 'las', 'los'
+  ]);
+  const terms = [...new Set(
+    queryStr
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .split(/[^a-z0-9]+/)
+      .filter(term => term.length >= 3 && !stopWords.has(term))
+  )].slice(0, 6);
+
+  const result = await pool.query(`
+    SELECT
+      p.id,
+      p.aliexpress_id,
+      p.title_original,
+      p.image_url,
+      p.marketing_copy,
+      p.suggested_price_local,
+      p.estimated_transit_days,
+      (
+        COALESCE(p.total_stock, 0) > 0
+        OR EXISTS (
+          SELECT 1 FROM product_variants v
+          WHERE v.product_id = p.id AND v.is_active = true AND v.stock > 0
+        )
+      ) AS in_stock,
+      c.name AS category_name
+    FROM products p
+    LEFT JOIN categories c ON p.category_id = c.id
+    WHERE p.status = 'WINNER'
+      AND p.target_country = $1
+      AND (
+        cardinality($2::text[]) = 0
+        OR EXISTS (
+          SELECT 1
+          FROM unnest($2::text[]) AS keyword(term)
+          WHERE p.title_original ILIKE '%' || keyword.term || '%'
+             OR p.marketing_copy->>'title_localized' ILIKE '%' || keyword.term || '%'
+             OR c.name ILIKE '%' || keyword.term || '%'
+        )
+      )
+      AND (
+        COALESCE(p.total_stock, 0) > 0
+        OR EXISTS (
+          SELECT 1 FROM product_variants v
+          WHERE v.product_id = p.id AND v.is_active = true AND v.stock > 0
+        )
+      )
+    ORDER BY (
+      SELECT COUNT(*)
+      FROM unnest($2::text[]) AS keyword(term)
+      WHERE p.title_original ILIKE '%' || keyword.term || '%'
+         OR p.marketing_copy->>'title_localized' ILIKE '%' || keyword.term || '%'
+         OR c.name ILIKE '%' || keyword.term || '%'
+    ) DESC, p.net_margin_usd DESC NULLS LAST
+    LIMIT 8
+  `, [country, terms]);
+
+  return result.rows;
+};

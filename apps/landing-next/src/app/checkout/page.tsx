@@ -7,6 +7,7 @@ import Link from 'next/link';
 import InitiateCheckoutTracker from './components/InitiateCheckoutTracker';
 import { getMetaCookies } from '@/lib/metaPixel';
 import Script from 'next/script'; 
+import { API_URL } from '@/lib/api';
 
 // ⚡ DICCIONARIO COMPLETO DE REGIONES Y COMUNAS DE CHILE
 const regionesYcomunas = {
@@ -87,10 +88,13 @@ declare global {
 }
 
 export default function CheckoutPage() {
-  const { items, getTotalPrice } = useCartStore();
+  const { items, getTotalPrice, replaceItems } = useCartStore();
   const [isMounted, setIsMounted] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [rutError, setRutError] = useState('');
+  const [abandonedCartConsent, setAbandonedCartConsent] = useState(false);
+  const [recoveryStatus, setRecoveryStatus] = useState<'idle' | 'loading' | 'error'>('idle');
+  const recoveryAttempted = useRef(false);
 
   const addressInputRef = useRef<HTMLInputElement>(null);
 
@@ -107,6 +111,43 @@ export default function CheckoutPage() {
   });
 
   useEffect(() => { setIsMounted(true); }, []);
+
+  useEffect(() => {
+    if (!isMounted || recoveryAttempted.current) return;
+    const token = new URLSearchParams(window.location.search).get('recover');
+    if (!token) return;
+    recoveryAttempted.current = true;
+    if (items.length > 0) return;
+
+    setRecoveryStatus('loading');
+    fetch(`${API_URL}/api/orders/recover/${encodeURIComponent(token)}`)
+      .then(async response => {
+        if (!response.ok) throw new Error('Enlace vencido');
+        return response.json();
+      })
+      .then(data => {
+        const recoveredItems = (data.items || []).map((item: any) => ({
+          id: `${item.product_id}:${item.variant_id || 'default'}`,
+          productId: String(item.product_id),
+          variantId: item.variant_id ? String(item.variant_id) : undefined,
+          title: String(item.title),
+          price: Number(item.price),
+          quantity: Number(item.quantity),
+          imageUrl: String(item.image_url || ''),
+          color: item.color || undefined,
+          size: item.size || undefined,
+          isDigital: item.is_digital === true
+        }));
+        if (recoveredItems.length === 0) throw new Error('Carrito vacío');
+        replaceItems(recoveredItems);
+        window.history.replaceState({}, '', '/checkout');
+        setRecoveryStatus('idle');
+      })
+      .catch(error => {
+        console.error('No se pudo restaurar el carrito:', error);
+        setRecoveryStatus('error');
+      });
+  }, [isMounted, items.length, replaceItems]);
 
   const initGoogleAutocomplete = () => {
     if (!addressInputRef.current || !window.google) return;
@@ -252,6 +293,7 @@ export default function CheckoutPage() {
         })),
         fbc,
         fbp,
+        abandonedCartConsent,
         clientUserAgent: navigator.userAgent,
         eventSourceUrl: window.location.href
       };
@@ -286,8 +328,15 @@ export default function CheckoutPage() {
   if (items.length === 0) {
     return (
       <div className="min-h-screen bg-[#020617] flex flex-col items-center justify-center text-white space-y-6">
-        <ShoppingCartIcon className="w-20 h-20 text-slate-600" />
-        <h1 className="text-2xl font-black uppercase tracking-widest italic">Tu carrito está vacío</h1>
+        {recoveryStatus === 'loading' ? (
+          <p className="text-slate-300">Recuperando tu carrito…</p>
+        ) : (
+          <>
+            <ShoppingCartIcon className="w-20 h-20 text-slate-600" />
+            <h1 className="text-2xl font-black uppercase tracking-widest italic">Tu carrito está vacío</h1>
+            {recoveryStatus === 'error' && <p className="text-sm text-slate-400">El enlace de recuperación venció o ya no está disponible.</p>}
+          </>
+        )}
         <Link href="/" className="px-8 py-3 bg-violet-600 rounded-full font-bold uppercase tracking-widest hover:bg-violet-500 transition-colors">
           Volver a la tienda
         </Link>
@@ -338,6 +387,16 @@ export default function CheckoutPage() {
                     <input required type="tel" name="phone" maxLength={12} value={shippingData.phone} onChange={handleInputChange} placeholder="Teléfono (Ej: +56912345678)" className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-violet-500 transition-all" />
                   </div>
                 </div>
+
+                <label className="flex items-start gap-3 text-xs text-slate-400 leading-relaxed">
+                  <input
+                    type="checkbox"
+                    checked={abandonedCartConsent}
+                    onChange={(event) => setAbandonedCartConsent(event.target.checked)}
+                    className="mt-0.5 accent-violet-500"
+                  />
+                  <span>Quiero recibir un recordatorio por correo si dejo esta compra pendiente. Es opcional y puedo ignorarlo.</span>
+                </label>
 
                 <div className="space-y-4">
                   <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-8">Dirección de Entrega</h3>

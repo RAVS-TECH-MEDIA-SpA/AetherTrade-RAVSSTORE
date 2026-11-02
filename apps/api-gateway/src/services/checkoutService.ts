@@ -42,6 +42,12 @@ export class CheckoutService {
       await dbClient.query('BEGIN'); // Iniciamos transacción
 
       const generatedOrderId = randomUUID(); 
+      const recoveryToken = randomUUID();
+      const checkoutTrackingData = {
+        ...(trackingData || {}),
+        abandoned_cart_consent: trackingData?.abandonedCartConsent === true,
+        cart_recovery_token: recoveryToken
+      };
       const totalAmount = orderData.items.reduce((sum: number, item: any) => sum + (Number(item.price) * Number(item.quantity)), 0);
 
       // ⚡ LECTURA DE URL PARA EL RETORNO AL FRONTEND
@@ -134,7 +140,7 @@ export class CheckoutService {
         addressId, 
         mpResponse.id, 
         totalAmount,
-        trackingData
+        checkoutTrackingData
       ]);
 
       // ============================================================================

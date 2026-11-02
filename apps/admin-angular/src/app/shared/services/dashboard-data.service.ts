@@ -79,6 +79,18 @@ export class DashboardDataService {
     });
   }
 
+  sendAgentMessage(
+    message: string,
+    country: string,
+    mode: 'sales' | 'support',
+    history: { role: 'user' | 'assistant'; text: string }[]
+  ): Observable<{ reply: string; products: { id: string; title: string; price: number; currency: string }[] }> {
+    return this.http.post<{ reply: string; products: { id: string; title: string; price: number; currency: string }[] }>(
+      `${this.apiUrl}/api/chat/message`,
+      { message, country, mode, history }
+    );
+  }
+
   getTrendsTimeline(): ChartData<'line'> {
     return {
       labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],

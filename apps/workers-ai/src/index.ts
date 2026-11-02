@@ -11,6 +11,7 @@ import { syncCJStock } from './workers/cj-stock.worker.js';
 import { syncCJTracking } from './workers/cj-tracking.worker.js';
 // ⚡ NUEVA IMPORTACIÓN: El worker que procesa el análisis profundo de los candidatos
 import { analyzeCandidatePush } from './workers/analysis.worker.js'; 
+import { aiAgentService } from './services/ai-agent.service.js';
 
 if (process.env.NODE_ENV !== 'production') {
   const __filename = fileURLToPath(import.meta.url);
@@ -34,6 +35,7 @@ app.use(express.json());
 const port = process.env.PORT || 8080;
 
 const startWorkers = async () => {
+  aiAgentService.startAbandonedCartRecovery();
   try {
     // Inicializamos la infraestructura de tópicos y suscripciones Push de forma segura
     await setupPubSubInits();

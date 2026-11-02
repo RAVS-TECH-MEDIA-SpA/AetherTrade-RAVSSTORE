@@ -4,6 +4,7 @@ import { Metadata } from 'next';
 import Script from 'next/script';
 import MetaPixelInit from '@/components/MetaPixelInit';
 import NextTopLoader from 'nextjs-toploader';
+import SalesAssistant from '@/components/SalesAssistant';
 
 export const metadata: Metadata = {
   title: {
@@ -79,6 +80,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         </Suspense>
         
         {children}
+        <SalesAssistant countryCode="CL" storeName="RAVSSTORE" />
 
         <Script src="https://googletagmanager.com" strategy="afterInteractive" />
         <Script id="google-analytics" strategy="afterInteractive">

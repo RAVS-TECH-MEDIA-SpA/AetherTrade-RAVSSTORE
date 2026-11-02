@@ -4,6 +4,15 @@ import { Resend } from 'resend';
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 export class EmailService {
+  private escapeHtml(value: string): string {
+    return value.replace(/[&<>"']/g, character => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;'
+    })[character] || character);
+  }
   
   // ==========================================
   // CORREO 1: BOLETA ELECTRÓNICA
@@ -210,6 +219,56 @@ export class EmailService {
       return true;
     } catch (error) {
       console.error(`🚨 Error enviando tracking a ${customerEmail}:`, error);
+      return false;
+    }
+  }
+
+  async sendAbandonedCartEmail(
+    customerEmail: string,
+    customerName: string,
+    subject: string,
+    opening: string,
+    items: Array<{ title: string; quantity: number; price: number }>,
+    total: number,
+    recoveryUrl: string
+  ): Promise<boolean> {
+    const currency = new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP' });
+    const safeName = this.escapeHtml(customerName);
+    const safeOpening = this.escapeHtml(opening);
+    const itemList = items.map(item =>
+      `<li style="margin:12px 0;color:#cbd5e1">${this.escapeHtml(item.title)} × ${item.quantity} <strong>${currency.format(item.price * item.quantity)}</strong></li>`
+    ).join('');
+    const html = `
+      <div style="font-family:Arial,sans-serif;background:#020617;color:#fff;padding:32px 16px">
+        <div style="max-width:560px;margin:0 auto;background:#0f172a;border-radius:20px;padding:32px">
+          <h1 style="font-size:22px">RAVSSTORE</h1>
+          <p>Hola ${safeName},</p>
+          <p>${safeOpening}</p>
+          <ul style="padding-left:20px">${itemList}</ul>
+          <p style="font-size:18px"><strong>Total: ${currency.format(total)}</strong></p>
+          <p style="text-align:center;margin:30px 0">
+            <a href="${this.escapeHtml(recoveryUrl)}" style="background:#7c3aed;color:#fff;padding:14px 22px;border-radius:10px;text-decoration:none;font-weight:bold">
+              Retomar mi compra
+            </a>
+          </p>
+          <p style="color:#94a3b8;font-size:12px">Si ya completaste tu compra, puedes ignorar este mensaje.</p>
+        </div>
+      </div>`;
+
+    try {
+      const { error } = await resend.emails.send({
+        from: 'RAVSStore <ventas@ravsstore.com>',
+        to: [customerEmail],
+        subject: subject.replace(/[\r\n]/g, ' ').slice(0, 120),
+        html
+      });
+      if (error) {
+        console.error(`Error enviando recuperación de carrito a ${customerEmail}:`, error);
+        return false;
+      }
+      return true;
+    } catch (error) {
+      console.error(`Error enviando recuperación de carrito a ${customerEmail}:`, error);
       return false;
     }
   }
