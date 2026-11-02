@@ -4,6 +4,12 @@ export const GLOBAL_MARKUP = 1.8;
 
 export const MARKET_CONFIG = {
   CL: {
+    name: 'Chile',
+    currency: 'CLP',
+    language: 'Spanish',
+    hemisphere: 'south',
+    MIN_NET_MARGIN_LOCAL: 5000,
+    MIN_CPA_LOCAL: 1800,
     MIN_PRICE: 1.5,
     MIN_SALES: 15,          // Bajamos de 35 para captar productos nuevos con potencial
     MAX_SHIPPING: 18.0,     // Aumentamos el límite de envío para absorber costos de AliExpress
@@ -14,6 +20,12 @@ export const MARKET_CONFIG = {
 },
   // Para escalar, solo añades más códigos de país aquí
   MX: {
+    name: 'Mexico',
+    currency: 'MXN',
+    language: 'Spanish',
+    hemisphere: 'north',
+    MIN_NET_MARGIN_LOCAL: 250,
+    MIN_CPA_LOCAL: 250,
     MIN_PRICE: 1.50,
     MIN_SALES: 50,
     MAX_SHIPPING: 6.00,
@@ -22,4 +34,4 @@ export const MARKET_CONFIG = {
     LAST_MILE_BUFFER: 3.50,
     SAFETY_MARGIN: 5.00
   }
-};
+} as const;

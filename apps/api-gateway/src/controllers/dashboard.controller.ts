@@ -3,6 +3,7 @@ import { pool } from '../database.js';
 import { PubSub } from '@google-cloud/pubsub';
 // NOTA: Debes copiar estos archivos desde workers-ai a tu carpeta del gateway
 import { GeminiService } from '../services/gemini.service.js'; 
+import { MARKET_CONFIG } from '../services/constants.js';
 
 import { findByAliExpressId, searchProducts } from '../products/products.service.js';
 import { syncVariantsFromRaw } from '../products/product-sync.service.js';
@@ -304,37 +305,53 @@ export const searchProductsHandler = async (req: Request, res: Response) => {
  * Trigger al Worker AI con Solución de Bucle de Ráfaga y Generación Centralizada
  */
 export const triggerAnalysis = async (req: Request, res: Response) => {
-  await initPubSub(); // Asegura que el tópico y la suscripción existan antes de publicar
   const { niches, country, nicheLimit, eliteLimit } = req.body; 
-  console.log(`🚀 [GATEWAY] Trigger recibido: Niches=${niches}, Country=${country}, NicheLimit=${nicheLimit}, EliteLimit=${eliteLimit}`);
-  // const TOPIC_NAME = 'discovery-tasks';
+  const targetCountry = String(country || 'CL').toUpperCase();
+  const requestedNicheLimit = Number(nicheLimit || 5);
+  const effectiveEliteLimit = Number(eliteLimit || 10);
+  const market = MARKET_CONFIG[targetCountry as keyof typeof MARKET_CONFIG];
+
+  if (!market) return res.status(400).json({ error: `Mercado no soportado: ${targetCountry}` });
+  if (!Number.isInteger(requestedNicheLimit) || requestedNicheLimit < 1 || requestedNicheLimit > 30) {
+    return res.status(400).json({ error: 'nicheLimit debe ser un entero entre 1 y 30.' });
+  }
+  if (!Number.isInteger(effectiveEliteLimit) || effectiveEliteLimit < 1 || effectiveEliteLimit > 50) {
+    return res.status(400).json({ error: 'eliteLimit debe ser un entero entre 1 y 50.' });
+  }
+
+  let finalNiches = String(niches || '')
+    .split(/[;,]/)
+    .map(n => n.trim().replace(/\s+/g, ' '))
+    .filter(n => n.length > 2);
+  finalNiches = [...new Set(finalNiches.map(n => n.toLowerCase()))];
+  if (finalNiches.length > 30) {
+    return res.status(400).json({ error: 'Se pueden analizar hasta 30 nichos por lote.' });
+  }
 
   try {
+    await initPubSub();
     // 1. Preparación de variables de control
-    const targetCountry = country || 'CL';
-    const effectiveEliteLimit = Number(eliteLimit || 10);
-    
-    let finalNiches = String(niches || '')
-      .split(';')
-      .map(n => n.trim())
-      .filter(n => n.length > 2);
-
-    const effectiveNicheCount = finalNiches.length > 0 ? finalNiches.length : Number(nicheLimit || 5);
-    const totalEstimatedCredits = effectiveNicheCount + (effectiveNicheCount * effectiveEliteLimit);
+    const effectiveNicheCount = finalNiches.length || requestedNicheLimit;
 
        // --- [INTEGRACIÓN] GENERACIÓN CENTRALIZADA DE NICHOS ---
     if (finalNiches.length === 0) {
       console.log(`🤖 [GATEWAY] Solicitando ${effectiveNicheCount} nichos diversos a Gemini...`);
       
       // Obtenemos historial de caché para evitar repeticiones
-      const recentRes = await pool.query('SELECT niche_text FROM niche_cache ORDER BY created_at DESC LIMIT 50');
+      const recentRes = await pool.query(
+        'SELECT DISTINCT niche_text FROM niche_cache WHERE country_code = $1 AND created_at >= NOW() - INTERVAL \'90 days\' ORDER BY niche_text LIMIT 100',
+        [targetCountry]
+      );
       const excluded = recentRes.rows.map((r: { niche_text: any; }) => r.niche_text);
 
       // LLAMADA ÚNICA: Gemini genera el array completo de una vez
       finalNiches = await gemini.generateDynamicNiches(targetCountry, effectiveNicheCount, excluded);
+      finalNiches = [...new Set(finalNiches.map(n => n.trim().replace(/\s+/g, ' ')).filter(Boolean))].slice(0, effectiveNicheCount);
       console.log(`✅ [GATEWAY] Nichos listos: ${finalNiches.join(', ')}`);
     }
     // -------------------------------------------------------
+    if (finalNiches.length === 0) throw new Error('No se generaron nichos para analizar.');
+    const totalEstimatedCredits = finalNiches.length + (finalNiches.length * effectiveEliteLimit);
 
     // 3. REGISTRO DEL BATCH (Punto de control en DB)
     const batchRes = await pool.query(`
@@ -342,7 +359,7 @@ export const triggerAnalysis = async (req: Request, res: Response) => {
         (target_country, total_niches_requested, target_elite_count, status)
       VALUES ($1, $2, $3, 'DISCOVERING')
       RETURNING id;
-    `, [targetCountry, effectiveNicheCount, effectiveEliteLimit]);
+    `, [targetCountry, finalNiches.length, effectiveEliteLimit]);
 
     const batchId = batchRes.rows[0].id;
 
@@ -375,7 +392,7 @@ export const triggerAnalysis = async (req: Request, res: Response) => {
       niches: finalNiches,
       telemetry: {
         total_estimated_credits: totalEstimatedCredits,
-        niche_breadth: effectiveNicheCount,
+        niche_breadth: finalNiches.length,
         elite_depth_per_niche: effectiveEliteLimit
       }
     });

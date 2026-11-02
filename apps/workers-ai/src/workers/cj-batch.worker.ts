@@ -70,8 +70,9 @@ export const processCJBatch = async (req: Request, res: Response) => {
         const cjResponse = await cjService.createOrder(order, items);
 
         if (cjResponse && (cjResponse.code === 200 || cjResponse.result === true)) {
-          const cjOrderId = cjResponse.data || 'CJ-PENDING'; 
+          const cjOrderId = cjResponse.data?.orderId || 'CJ-PENDING'; 
           
+          // ⚡ APLICADO: Cambio de nombre de columna a ali_order_id
           await pool.query(`
             UPDATE orders 
             SET status = 'PROCESSING_SUPPLIER', ali_order_id = $1 

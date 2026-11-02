@@ -1,4 +1,3 @@
-// src/app/products/[id]/page.tsx
 import { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { getProductByAliId } from '@/lib/api';
@@ -11,15 +10,27 @@ interface Props {
   params: Promise<{ id: string }>;
 }
 
+// Función auxiliar interna para limpiar los emojis pegados al ID
+function cleanId(rawId: string): string {
+  // Se queda estrictamente con caracteres de UUID (letras, números y guiones).
+  // Ignora cualquier emoji o texto codificado (%F0%9F...) que venga al final.
+  const match = rawId.match(/^[a-zA-Z0-9-]+/);
+  return match ? match[0] : rawId;
+}
+
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const { id } = await params;
+  const { id: rawId } = await params;
+  const id = cleanId(rawId); // 🛠️ Limpiamos el ID antes de consultar la API
+  
   const product = await getProductByAliId(id);
   if (!product) return { title: 'Producto no encontrado' };
   return { title: `${product.marketing_copy?.title_localized || product.title_original} | Aether Trade` };
 }
 
 export default async function ProductPage({ params }: Props) {
-  const { id } = await params;
+  const { id: rawId } = await params;
+  const id = cleanId(rawId); // 🛠️ Limpiamos el ID antes de procesar el producto
+
   const product = await getProductByAliId(id);
 
   if (!product) notFound();

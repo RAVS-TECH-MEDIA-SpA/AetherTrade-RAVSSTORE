@@ -16,6 +16,7 @@ export class ScoutingComponent implements OnInit {
   public textoInput: string = '';
   public selectedNicheLimit: number = 5;  // Amplitud
   public selectedEliteLimit: number = 10; // Profundidad
+  public targetCountry: 'CL' | 'MX' = 'CL';
   
   // Renombrado a isProcessing para coincidir con el error TS2339 del HTML
   public isProcessing: boolean = false; 
@@ -27,7 +28,7 @@ export class ScoutingComponent implements OnInit {
 
   ngOnInit(): void { 
     this.recalcularCuota();
-    this.addLog('Aether-Core Terminal V3.5.0 inicializada en Cabrero.', 'system'); 
+    this.addLog('Aether-Core Terminal V3.5.0 lista para scouting local e internacional.', 'system');
   }
 
   /**
@@ -64,7 +65,7 @@ export class ScoutingComponent implements OnInit {
     this.isProcessing = true;
     const niches = this.nichosSeleccionados.join(';');
     
-    this.dataService.triggerManualAnalysis(niches, 'CL', this.selectedNicheLimit, this.selectedEliteLimit)
+    this.dataService.triggerManualAnalysis(niches, this.targetCountry, this.selectedNicheLimit, this.selectedEliteLimit)
       .subscribe({
         next: (res: any) => {
           this.addLog(`✅ Batch ${res.batchId || 'N/A'} encolado exitosamente.`, 'success');

@@ -127,10 +127,10 @@ export class GeminiService {
   ) {
     const hasSynthetic = competitors.some(c => c.isSynthetic);
     const minCompPriceLocal = competitors.length > 0 ? Math.min(...competitors.map(c => c.price)) : 0;
-    const currency = targetCountry === 'CL' ? 'CLP' : 'USD';
-
     // CARGA DE CONFIGURACIÓN DINÁMICA POR PAÍS
-    const config = MARKET_CONFIG[targetCountry as keyof typeof MARKET_CONFIG] || MARKET_CONFIG.CL;
+    const config = MARKET_CONFIG[targetCountry as keyof typeof MARKET_CONFIG];
+    if (!config) throw new Error(`Mercado no soportado: ${targetCountry}`);
+    const currency = config.currency;
     
     // Extraemos la información técnica sin saturar el contexto de tokens
     const technicalSpecs = JSON.stringify(aliData.properties?.slice(0, 15) || []);
@@ -158,10 +158,10 @@ export class GeminiService {
 
       ### 4. LÓGICA DE DECISIÓN (WINNER & ADS):
       - "isWinner" = true SOLO SI el modelo financiero proyecta un Margen Neto de al menos $${config.SAFETY_MARGIN.toFixed(2)} USD después de costos e impuestos.
-      - "isViableForAds" = true SOLO SI el cpaMaxLocal calculado es >= ${targetCountry === 'CL' ? '1800' : '2.00'} ${currency}.
+      - "isViableForAds" = true SOLO SI el cpaMaxLocal calculado es >= ${config.MIN_CPA_LOCAL} ${currency}.
 
       ### 5. REGLAS DE COPYWRITING Y SEGMENTACIÓN META ADS:
-      - TÍTULO: Máximo 60 caracteres en ${targetCountry === 'CL' ? 'Español' : 'Inglés'}.
+      - TÍTULO: Máximo 60 caracteres en ${config.language}.
       - HOOK: Frase disruptiva que detenga el scroll.
       - BENEFICIOS: Lista de 3 a 4 puntos clave, extraídos de la data técnica.
       - DESCRIPCIÓN: Párrafo persuasivo, técnico y formal.

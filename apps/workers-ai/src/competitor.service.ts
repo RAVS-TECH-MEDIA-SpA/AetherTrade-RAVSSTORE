@@ -1,6 +1,7 @@
 import { AliExpressService } from './aliexpress.service.js';
 import { ScraperService } from './services/scraper.service.js';
 import { GeminiService } from './gemini.service.js';
+import { MARKET_CONFIG } from './config/constants.js';
 
 const MAX_MARKUP_FACTOR = 3.0; 
 
@@ -56,7 +57,9 @@ export class CompetitorService {
 
       // Piso de Muerte (Costo + IVA + Margen mínimo de ~6 USD)
       const costWithTaxLocal = landedCostLocal * (1 + vatRate / 100);
-      const minMarginLocal = 5000; // Margen mínimo de $5.000 CLP aprox
+      const config = MARKET_CONFIG[targetCountry as keyof typeof MARKET_CONFIG];
+      if (!config) throw new Error(`Mercado no soportado: ${targetCountry}`);
+      const minMarginLocal = config.MIN_NET_MARGIN_LOCAL;
       const absoluteMinPrice = costWithTaxLocal + minMarginLocal;
 
       let isWinner = analysis.isWinner;

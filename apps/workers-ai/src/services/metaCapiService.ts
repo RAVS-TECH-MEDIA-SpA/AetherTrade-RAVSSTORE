@@ -10,7 +10,7 @@ export const hashData = (data: string | undefined): string | undefined => {
 export class MetaCapiService {
   private pixelId = process.env.FB_PIXEL_ID;
   private accessToken = process.env.FB_ACCESS_TOKEN;
-  private testEventCode = process.env.FB_TEST_EVENT_CODE; // Útil para depurar en Commerce Manager
+
 
   /**
    * Envía un evento de conversión (ej. Purchase) a la API de Meta
@@ -25,6 +25,7 @@ export class MetaCapiService {
     ipAddress?: string;
     userAgent?: string;
     totalAmountLocal: number;
+    currency?: string;
     contentIds: string[];
     eventSourceUrl: string;
   }) {
@@ -51,13 +52,13 @@ export class MetaCapiService {
           },
           custom_data: {
             value: payload.totalAmountLocal,
-            currency: 'CLP',
+            currency: payload.currency || 'CLP',
             content_ids: payload.contentIds,
             content_type: 'product',
           },
         },
       ],
-      ...(this.testEventCode && { test_event_code: this.testEventCode }),
+      
     };
 
     try {

@@ -6,7 +6,9 @@ import { pool } from '../lib/db.js';
 import { redis } from '../lib/redis.js'; 
 import { CJDropshippingService } from '../services/cj.service.js'; // ⚡ CJ INYECTADO
 import { MARKET_CONFIG } from '../config/constants.js';
+import { calculateDiscoveryScore } from '../services/discovery-scoring.js';
 import { Request, Response } from 'express';
+import crypto from 'crypto';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -31,7 +33,16 @@ interface CJProductItem {
   productId?: string;
   productNameEn: string;
   sellPrice: number;
+  sales?: number;
+  rating?: number;
+  stock?: number;
 }
+
+const getMarketConfig = (country: string) => {
+  const config = MARKET_CONFIG[country as keyof typeof MARKET_CONFIG];
+  if (!config) throw new Error(`Mercado no soportado: ${country}`);
+  return config;
+};
 
 // ============================================================================
 // 🛠️ 1. INFRAESTRUCTURA: Auto-Creación de Tópico y Suscripción Pub/Sub
@@ -77,14 +88,15 @@ export const triggerDiscoveryBatch = async (req: Request, res: Response) => {
 
     // AQUÍ DEBES OBTENER TUS NICHOS (Ya sea llamando a Gemini o desde req.body)
     // Asumimos que los recibes en req.body.niches o generas tu array aquí
-    const nichosGenerados = req.body.niches || ["usb cup warmer", "keyboard wrist rest", "ergonomic mouse pad"]; // Array de ejemplo/fallback
+    const nichosGenerados = req.body.niches;
     
-    if (!nichosGenerados || nichosGenerados.length === 0) {
+    if (!Array.isArray(nichosGenerados) || nichosGenerados.length === 0) {
        return res.status(400).json({ error: "No se proporcionaron nichos para procesar." });
     }
 
-    const batchId = `batch-${Date.now()}`;
-    const targetCountry = req.body.country || 'CL';
+    const batchId = crypto.randomUUID();
+    const targetCountry = String(req.body.country || 'CL').toUpperCase();
+    getMarketConfig(targetCountry);
     const eliteLimit = req.body.eliteLimit || 50;
 
     // Registramos el batch en la BD para llevar la cuenta
@@ -151,13 +163,14 @@ export async function runDiscoveryTask(
 ) {
   const ahora = new Date().toLocaleString("es-CL", { timeZone: "America/Santiago" });
   const targetCountry = manualCountry || 'CL';
-  const config = MARKET_CONFIG[targetCountry as keyof typeof MARKET_CONFIG] || MARKET_CONFIG.CL;
+  const config = getMarketConfig(targetCountry);
 
   console.log(`\n🚜 [COSECHA CJ BATCH: ${batchId}] | ${ahora}`);
   console.log(`📡 Nicho Recibido: "${niche}" | Mercado: ${targetCountry}`);
 
   try {
-    const cleanSearchQuery = niche.split(' ').slice(0, 4).join(' ');
+    const cleanSearchQuery = String(niche).trim().replace(/\s+/g, ' ').split(' ').slice(0, 4).join(' ');
+    if (!cleanSearchQuery) throw new Error('El nicho no puede estar vacío.');
     
     const nicheRes = await pool.query(
       `INSERT INTO niche_cache (country_code, niche_text) 
@@ -223,7 +236,26 @@ export async function runDiscoveryTask(
       if (isAnalyzed) continue;
 
       if (price >= config.MIN_PRICE && price <= config.MAX_PRICE) {
-        const discoveryScore = 100 / (price > 0 ? price : 1);
+        const stock = Number.isFinite(Number(product.stock)) ? Number(product.stock) : undefined;
+        if (stock !== undefined && stock <= 0) continue;
+
+        const sales = Number.isFinite(Number(product.sales)) ? Number(product.sales) : undefined;
+        const rating = Number.isFinite(Number(product.rating)) ? Number(product.rating) : undefined;
+        if (sales !== undefined && sales > 0 && sales < config.MIN_SALES) continue;
+        if (rating !== undefined && rating > 0 && rating < config.MIN_RATING) continue;
+
+        const discoveryScore = calculateDiscoveryScore({
+          title: product.productNameEn || '',
+          niche: cleanSearchQuery,
+          price,
+          minPrice: config.MIN_PRICE,
+          maxPrice: config.MAX_PRICE,
+          sales,
+          rating,
+          stock,
+          country: targetCountry,
+          hemisphere: config.hemisphere
+        });
 
         poolCandidates.push({
           batchId,
@@ -231,8 +263,8 @@ export async function runDiscoveryTask(
           aliexpress_id: pid, 
           title: product.productNameEn || 'Unknown Product',
           price,
-          sales: 100, 
-          rating: 4.8, 
+          sales: sales || 0,
+          rating: rating || 0,
           score: discoveryScore
         });
       }
@@ -269,7 +301,7 @@ export async function runDiscoveryTask(
   } catch (error: any) {
     console.error(`🚨 [ERROR DISCOVERY] Batch ${batchId}:`, error.message);
     // ⚡ VITAL: Relanzamos el error si es de Rate Limit para que el Endpoint lo atrape y Pub/Sub lo devuelva a la cola
-    if (error.message === "CJ_RATE_LIMIT") throw error;
+    throw error;
   }
 }
 

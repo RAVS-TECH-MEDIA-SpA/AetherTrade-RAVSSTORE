@@ -1,8 +1,9 @@
+import { Suspense } from 'react';
 import './globals.css';
 import { Metadata } from 'next';
 import Script from 'next/script';
 import MetaPixelInit from '@/components/MetaPixelInit';
-import NextTopLoader from 'nextjs-toploader'; // ⚡ 1. Importamos el TopLoader
+import NextTopLoader from 'nextjs-toploader';
 
 export const metadata: Metadata = {
   title: {
@@ -36,8 +37,6 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
-  const pixelId = process.env.NEXT_PUBLIC_FB_PIXEL_ID;
-
   return (
     <html lang="es" className="scroll-smooth">
       <head>
@@ -59,54 +58,29 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             })
           }}
         />
-        
-        {/* Meta Pixel */}
-        {pixelId && (
-          <>
-            <Script
-              id="fb-pixel-base"
-              src="https://facebook.net"
-              strategy="afterInteractive"
-            />
-            <Script id="fb-pixel-init" strategy="afterInteractive">
-              {`
-                window.fbq = window.fbq || function() {
-                  (window.fbq.q = window.fbq.q || []).push(arguments);
-                };
-                window._fbq = window._fbq || window.fbq;
-                fbq.push = fbq;
-                fbq.loaded = true;
-                fbq.version = '2.0';
-                fbq.queue = [];
-                fbq('init', '${pixelId}');
-                fbq('track', 'PageView');
-              `}
-            </Script>
-          </>
-        )}
+        <meta name="facebook-domain-verification" content="tpj9r0g3h1371lt6h4pqmyjt3c553m" />
       </head>
       <body className="antialiased">
-        {/* ⚡ 2. Inyectamos la barra de carga global aquí */}
         <NextTopLoader
-          color="#3B82F6" // Cambia este hex por el color principal de tu tienda
+          color="#3B82F6"
           initialPosition={0.08}
           crawlSpeed={200}
           height={3}
           crawl={true}
-          showSpinner={true} // Muestra un pequeño spinner circular en la esquina superior derecha
+          showSpinner={true}
           easing="ease"
           speed={200}
           shadow="0 0 10px #3B82F6,0 0 5px #3B82F6"
         />
 
-        <MetaPixelInit />
+       {/* ⚡ FIX: Envolvemos en Suspense para evitar el error de build en páginas estáticas */}
+        <Suspense fallback={null}>
+          <MetaPixelInit />
+        </Suspense>
         
         {children}
 
-        <Script
-          src="https://googletagmanager.com"
-          strategy="afterInteractive"
-        />
+        <Script src="https://googletagmanager.com" strategy="afterInteractive" />
         <Script id="google-analytics" strategy="afterInteractive">
           {`
             window.dataLayer = window.dataLayer || [];

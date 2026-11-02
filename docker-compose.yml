@@ -12,7 +12,6 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - ./infrastructure/db/init.sql:/docker-entrypoint-initdb.d/init.sql
       - postgres_data:/var/lib/postgresql/data
     networks:
       - aether-network
@@ -72,7 +71,7 @@ services:
       pubsub:
         condition: service_started
       gcs-emulator:
-        condition: service_started # ⚡ El emulador de GCS debe estar arriba antes que el Worker
+        condition: service_started
     environment:
       - PUBSUB_EMULATOR_HOST=pubsub:8085
       - PUBSUB_PROJECT_ID=aethertrade-local
@@ -80,12 +79,13 @@ services:
       - REDIS_PORT=6379
       - DATABASE_URL=postgres://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@db:5432/${DB_NAME:-aethertrade}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
       - SERPER_API_KEY=${SERPER_API_KEY}
       - RAPID_API_KEY=${RAPID_API_KEY}
-      # --- CORRECCIÓN DE RUTA DE CREDENCIALES ---
+      # ⚡ AQUÍ ESTÁ EL CAMBIO CLAVE PARA EL WORKER:
+      - RESEND_API_KEY=${RESEND_API_KEY}
       - GOOGLE_APPLICATION_CREDENTIALS=/secrets/aether-gcp-credentials.json
       - GOOGLE_CLOUD_PROJECT=aethertrade-core
-      # ⚡ VARIABLE MAGICA: Redirige las llamadas de GCS al emulador local
       - STORAGE_EMULATOR_HOST=http://gcs-emulator:4443
     volumes:
       - ./secrets:/secrets:ro
@@ -117,9 +117,9 @@ services:
       - PUBSUB_PROJECT_ID=aethertrade-local
       - RAPID_API_KEY=${RAPID_API_KEY}
       - STORAGE_EMULATOR_HOST=http://gcs-emulator:4443
-      # ⚡ AQUI ESTÁ LA MAGIA DE MERCADO PAGO:
       - MP_ACCESS_TOKEN=${MP_ACCESS_TOKEN}
       - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
+      - RESEND_API_KEY=${RESEND_API_KEY}
     volumes:
       - ./secrets:/secrets:ro
     networks:

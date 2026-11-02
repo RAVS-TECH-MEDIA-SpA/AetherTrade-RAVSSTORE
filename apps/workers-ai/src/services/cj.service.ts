@@ -165,20 +165,26 @@ console.log('🚀 [CJ Dropshipping] Preparando payload :', orderData, 'con couri
       throw error;
     }
   }
-  // 📦 OBTENER DETALLE Y TRACKING DE LA ORDEN
-  async getOrderTracking(orderId: string) {
+  
+  // 📦 OBTENER DETALLE Y TRACKING DE ÓRDENES EN LOTE (V2)
+  async getOrderTrackingBatch(orderIds: string[]) {
     const token = await this.getValidToken();
 
     try {
-      // CJ usa query params para los GET
-      const response = await axios.get(`${this.baseUrl}/shopping/order/getOrderDetail`, {
-        params: { orderNumber: orderId },
-        headers: { 'CJ-Access-Token': token }
+      // ⚡ Usamos el endpoint POST 1.16 para enviar un array de IDs en el body
+      const response = await axios.post(`${this.baseUrl}/shopping/order/getOrderDetailBatch`, {
+        orderIds: orderIds
+      }, {
+        headers: { 
+          'CJ-Access-Token': token,
+          'Content-Type': 'application/json'
+        }
       });
 
-      return response.data.data; // Retorna el objeto con status y trackingNumber
+      // Retorna el array de órdenes (data)
+      return response.data.data; 
     } catch (error: any) {
-      console.error(`🚨 [CJ Error] Fallo al consultar orden ${orderId}:`, error.response?.data || error.message);
+      console.error(`🚨 [CJ Error] Fallo al consultar batch de tracking:`, error.response?.data || error.message);
       return null;
     }
   }

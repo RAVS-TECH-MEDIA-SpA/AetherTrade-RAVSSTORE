@@ -1,42 +1,36 @@
-# --- ETAPA 1: Compilación (Builder) ---
+# ETAPA 1: Builder
 FROM node:20-slim AS builder
-
 WORKDIR /app
 
-# Copiar archivos de configuración de dependencias de la raíz y de la app
+# Copiamos archivos de configuración
 COPY package*.json ./
-COPY apps/api-gateway/package*.json ./apps/api-gateway/
+COPY apps/workers-ai/package*.json ./apps/workers-ai/
 
-# Instalar todas las dependencias del monorepo
+# Instalamos todo en el builder
 RUN npm install
 
-# Copiar el código fuente de la API Gateway
-COPY apps/api-gateway ./apps/api-gateway
+# Copiamos el resto del código
+COPY . . 
+WORKDIR /app/apps/workers-ai
+RUN npx tsc
 
-# Compilar TypeScript
-WORKDIR /app/apps/api-gateway
-RUN npm run build
-
-# Limpiar dependencias de desarrollo en la raíz para dejar el node_modules listo para producción
-WORKDIR /app
-RUN npm prune --production
-
-
-# --- ETAPA 2: Ejecución (Runner) ---
+# ETAPA 2: Producción
 FROM node:20-slim
-
 WORKDIR /app
-
-# Variable de entorno para producción
 ENV NODE_ENV=production
 
-# Copiar el package.json específico, los node_modules ya limpios y el código compilado desde el builder
-COPY --from=builder /app/apps/api-gateway/package.json ./package.json
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/apps/api-gateway/dist ./dist
+# Copiamos los package.json de nuevo
+COPY package*.json ./
+COPY apps/workers-ai/package*.json ./apps/workers-ai/
 
-# Cloud Run usa el puerto 8080 por defecto
-EXPOSE 8080
+# INSTALACIÓN LIMPIA: Esto asegura que todas las dependencias estén presentes
+RUN npm install --omit=dev
 
-# Comando para arrancar la API
-CMD ["node", "dist/server.js"]
+# Copiamos el dist compilado desde el builder
+COPY --from=builder /app/apps/workers-ai/dist ./apps/workers-ai/dist
+
+# Cambiamos al directorio del worker
+WORKDIR /app/apps/workers-ai
+
+# Ejecutamos el archivo principal de Express ya compilado (¡Adiós a tsx y a los timeouts!)
+CMD ["node", "dist/index.js"]

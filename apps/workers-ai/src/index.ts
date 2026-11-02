@@ -3,18 +3,14 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import crypto from 'crypto'; // ⚡ FIX 1: Importamos crypto nativo para generar UUIDs reales
 
-// Importación de Workers y Servicios
-import { listenForCandidates } from './workers/analysis.worker.js'; 
-
-
+// Importación de Workers y Servicios adaptados al modelo Push
 import { runDiscoveryTask, triggerDiscoveryBatch, processPubSubNiche, processCJBatch, setupPubSubInits } from './workers/discovery.worker.js';
-
-import { listenForMetaCapiEvents } from './workers/metaCapi.worker.js';
-import './workers/stock-sync.worker.js';
-import { startBillingWorker } from './workers/billing.worker.js';
-
 import { syncCJStock } from './workers/cj-stock.worker.js';
+import { syncCJTracking } from './workers/cj-tracking.worker.js';
+// ⚡ NUEVA IMPORTACIÓN: El worker que procesa el análisis profundo de los candidatos
+import { analyzeCandidatePush } from './workers/analysis.worker.js'; 
 
 if (process.env.NODE_ENV !== 'production') {
   const __filename = fileURLToPath(import.meta.url);
@@ -39,20 +35,11 @@ const port = process.env.PORT || 8080;
 
 const startWorkers = async () => {
   try {
-    await listenForCandidates();
-    console.log('📡 AnalysisWorker: Suscripción activa.');
-
-    await listenForMetaCapiEvents();
-    console.log('📡 MetaCapiWorker: Suscripción activa.');
-
-    await startBillingWorker();
-    console.log('🧾 BillingWorker: Suscripción activa.');
+    // Inicializamos la infraestructura de tópicos y suscripciones Push de forma segura
     await setupPubSubInits();
-    console.log('📡 DiscoveryWorker: Suscripción de nichos activa.');
-    console.log('📦 Endpoint AliExpress Batch: Listo en /crons/process-orders esperando a Cloud Scheduler.');
-
+    console.log('📡 Ecosistema Pub/Sub Push verificado correctamente.');
   } catch (err) {
-    console.error('❌ Error iniciando los workers:', err);
+    console.error('❌ Error inicializando el ecosistema:', err);
   }
 };
 
@@ -60,13 +47,17 @@ const startWorkers = async () => {
 app.get('/', (req, res) => res.status(200).send('Worker AI Root OK'));
 app.get('/health', (req, res) => res.status(200).send('Worker AI Online'));
 
-// ⚡ RUTA PARA CLOUD SCHEDULER (Procesamiento de Órdenes a CJ)
+// ⚡ RUTAS DE CRON JOBS Y WEBHOOKS PUSH
 app.post('/crons/process-orders', processCJBatch);
-
-// Agrega esta línea junto a las otras rutas de Cron Jobs
 app.post('/crons/sync-stock', syncCJStock);
+app.post('/crons/sync-tracking', syncCJTracking);
 
-// Variables y Rutas de Análisis
+app.post('/api/cron/trigger-discovery', triggerDiscoveryBatch);
+app.post('/api/pubsub/process-niche', processPubSubNiche);
+// ⚡ NUEVA RUTA: La que recibe los 50 finalistas de Pub/Sub para el análisis de IA
+app.post('/api/pubsub/analyze-candidate', analyzeCandidatePush);
+
+// Variables y Rutas de Análisis Manual / Legado
 let activeTasks = 0;
 let isCircuitOpen = false; 
 
@@ -80,23 +71,18 @@ app.post('/analyze', async (req, res) => {
 
   const nichesArray = niche ? niche.split(/[;,]/).map((n: string) => n.trim()).filter((n: string) => n.length > 0) : [];
 
+  // ⚡ FIX 2: Evitamos el bucle de buscar literalmente "IA_DYNAMIC_SELECTION"
   if (nichesArray.length === 0) {
-    console.log(`📡 Iniciando selección automática de la IA para ${country}.`);
-    activeTasks++; 
-    const autoBatchId = `AUTO-${Date.now()}`;
-    
-    runDiscoveryTask(autoBatchId, "IA_DYNAMIC_SELECTION", country, limit)
-      .catch(err => {
-        console.error(`🚨 Error en descubrimiento automático:`, err);
-        if (err?.message?.includes('quota')) isCircuitOpen = true;
-      })
-      .finally(() => { activeTasks--; });
-
-    return res.json({ message: "Análisis iniciado (Selección automática)", niches_processed: ["IA_DYNAMIC_SELECTION"], active_queue: activeTasks });
+    console.warn(`⚠️ Intento de análisis sin nichos. Petición rechazada para evitar consultas fantasma en CJ.`);
+    return res.status(400).json({ 
+      error: "Falta el parámetro 'niche'. Para probar envíe un nicho. Para automatización IA use el endpoint /api/cron/trigger-discovery" 
+    });
   }
 
   console.log(`📡 Iniciando análisis para ${nichesArray.length} nichos.`);
-  const manualBatchId = `BATCH-${Date.now()}`;
+  
+  // ⚡ FIX 3: Usamos un UUID válido para PostgreSQL en lugar de concatenar texto
+  const manualBatchId = crypto.randomUUID();
 
   for (const singleNiche of nichesArray) {
     if (isCircuitOpen) break; 
@@ -112,19 +98,7 @@ app.post('/analyze', async (req, res) => {
   return res.json({ message: "Análisis iniciado por lotes", niches_processed: nichesArray, active_queue: activeTasks });
 });
 
-
-// ... (configuración de express) ...
-
-// 1. La ruta que debe llamar tu Cron en Google Cloud Scheduler
-app.post('/api/cron/trigger-discovery', triggerDiscoveryBatch);
-
-// 2. La NUEVA ruta oculta que recibe los Push de Pub/Sub
-app.post('/api/pubsub/process-niche', processPubSubNiche);
-
-// (Tu ruta de órdenes existente)
-app.post('/api/cron/process-orders', processCJBatch);
-
 app.listen(Number(port), '0.0.0.0', () => {
-  console.log(`🚀 RavsStore Engine operando en puerto ${port} (Satisfaciendo a Cloud Run)`);
+  console.log(`🚀 RavsStore Engine operando en puerto ${port} (Modelo Push HTTP Activo)`);
   startWorkers();
 });

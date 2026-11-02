@@ -7,8 +7,8 @@ declare global {
     _fbq: any;
   }
 }
-
-export const META_PIXEL_ID = process.env.NEXT_PUBLIC_META_PIXEL_ID;
+// ⚡ FIX: Busca ambas posibles variables de entorno, y si fallan, usa el ID directamente
+export const META_PIXEL_ID = process.env.NEXT_PUBLIC_META_PIXEL_ID || process.env.NEXT_PUBLIC_FB_PIXEL_ID || '897800599824350';
 
 export function getCookie(name: string): string | null {
   if (typeof document === 'undefined') return null;

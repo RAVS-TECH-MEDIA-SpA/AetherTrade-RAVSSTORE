@@ -36,9 +36,19 @@ export class GeminiService {
 
  async generateDynamicNiches(country: string, limit: number, excludedNiches: string[] = []): Promise<string[]> {
     const now = new Date();
-    const month = now.toLocaleString('es-CL', { month: 'long' });
+    const month = now.toLocaleString('es-CL', { month: 'long', timeZone: 'UTC' });
     const seed = now.getTime(); 
-    const config = MARKET_CONFIG[country as keyof typeof MARKET_CONFIG] || MARKET_CONFIG.CL;
+    const config = MARKET_CONFIG[country as keyof typeof MARKET_CONFIG];
+    if (!config) throw new Error(`Mercado no soportado: ${country}`);
+    const monthNumber = now.getUTCMonth() + 1;
+    const southernSpring = monthNumber >= 9 && monthNumber <= 11;
+    const northernSpring = monthNumber >= 3 && monthNumber <= 5;
+    const isSpring = config.hemisphere === 'south' ? southernSpring : northernSpring;
+    const season = isSpring ? 'spring' : monthNumber >= 6 && monthNumber <= 8
+      ? config.hemisphere === 'south' ? 'winter' : 'summer'
+      : monthNumber >= 9 && monthNumber <= 11
+        ? config.hemisphere === 'south' ? 'spring' : 'autumn'
+        : config.hemisphere === 'south' ? 'summer' : 'winter';
 
     const exclusionRule = excludedNiches.length > 0 
       ? `\n        CRITICAL EXCLUSION LIST: Forbidden to suggest any of these previously explored niches: [${excludedNiches.join(', ')}].`
@@ -46,7 +56,7 @@ export class GeminiService {
 
     const prompt = `
         CONTEXT: Senior Market Intelligence Lead - Cross-border E-commerce Arbitrage.
-        OBJECTIVE: Identify ${limit} high-velocity SEO keywords for ${country} in ${month}.
+        OBJECTIVE: Identify ${limit} evidence-led product niches for ${config.name} (${country}) in ${month}, during local ${season}.
         RANDOMNESS SEED: ${seed}.
         ${exclusionRule}
 
@@ -58,12 +68,13 @@ export class GeminiService {
         5. WORD LIMIT: Exactly 2 to 3 words per string.
         6. NO BRANDS: Do not include brand names.
 
-        DROPSHIPPING MARKET PARAMETERS (Tech & High-End Focus):
-        - TARGET CATEGORIES: High-end electronics, smart home automation, tech gadgets, specialized tools, automotive tech accessories, computer peripherals, and advanced pet technology.
-        - STRICTLY FORBIDDEN CATEGORIES: Clothing, apparel, fashion accessories, jewelry, rings, necklaces, bracelets, textiles, shoes, bags, and cosmetics. DO NOT suggest anything related to fashion.
-        - Retail Gap: Compact, high-perceived-value technology that is hard to find in standard local retail.
-        - Logistics constraints: Focus on small but expensive tech. Strictly AVOID heavy items, large dimensions, liquids, or highly fragile materials.
-        - Seasonality: Consider the specific weather and cultural needs for ${month} in ${country}.
+        MARKET AND SEASONALITY:
+        - Use ${config.currency} price expectations and Spanish-language demand for ${config.name}.
+        - Favor niches whose buying intent is timely for local ${season} and ${month}; account for the country's hemisphere and retail calendar.
+        - Explore multiple practical categories (home, tools, travel, pet, automotive, personal technology and outdoor) instead of repeating one niche.
+        - Favor compact products with clear utility, repeatable demand, reliable shipping and a plausible local retail gap.
+        - Exclude regulated or safety-critical products, counterfeit-branded goods, fragile or bulky products, and niches whose seasonal demand has already passed.
+        - Do not claim live trend or sales evidence. Return search terms suitable for CJ catalog validation.
         
         PROFITABILITY: Net Margin > $${config.SAFETY_MARGIN.toFixed(2)} USD.`;
 
@@ -78,12 +89,17 @@ export class GeminiService {
         throw new Error("Formato JSON no encontrado.");
       }
 
-      return JSON.parse(text.substring(startJson, endJson));
+      const niches = JSON.parse(text.substring(startJson, endJson));
+      if (!Array.isArray(niches)) throw new Error('La respuesta de nichos no es un array.');
+      return [...new Set(niches.map(value => String(value).trim()).filter(Boolean))].slice(0, limit);
 
     } catch (error) {
       console.error("❌ Error en Discovery IA:", error);
-      // Fallback actualizado a tecnología
-      return ["smart door lock", "wifi temperature sensor", "wireless car charger"];
+      const marketFallbacks: Record<string, string[]> = {
+        CL: ['portable car organizer', 'smart garden sensor', 'travel power adapter'],
+        MX: ['solar garden light', 'portable car organizer', 'smart home sensor']
+      };
+      return (marketFallbacks[country] || marketFallbacks.CL).slice(0, limit);
     }
   }
 }

@@ -123,9 +123,10 @@ export const handleMPWebhook = async (req: Request, res: Response) => {
       );
 
       const orderRes = await pool.query(`
-        SELECT o.total_amount_local, o.client_tracking_data, c.email, c.phone
+        SELECT o.total_amount_local, o.client_tracking_data, c.email, c.phone, a.country_code
         FROM orders o
         JOIN customers c ON o.customer_id = c.id
+        LEFT JOIN customer_addresses a ON o.address_id = a.id
         WHERE o.id = $1
       `, [orderId]);
 
@@ -137,6 +138,8 @@ export const handleMPWebhook = async (req: Request, res: Response) => {
         const customerData = orderRes.rows[0];
         const contentIds = itemsRes.rows.map(row => String(row.product_id));
         const tracking = customerData.client_tracking_data || {};
+        const currencyByCountry: Record<string, string> = { CL: 'CLP', MX: 'MXN' };
+        const currency = currencyByCountry[String(customerData.country_code || 'CL').trim()] || 'CLP';
 
         // A. Payload para Meta CAPI
         const capiPayload = {
@@ -149,6 +152,7 @@ export const handleMPWebhook = async (req: Request, res: Response) => {
           ipAddress: tracking.ipAddress || '0.0.0.0', 
           userAgent: tracking.userAgent || '',
           totalAmountLocal: Number(customerData.total_amount_local),
+          currency,
           contentIds: contentIds,
           eventSourceUrl: `https://ravsstore.com/checkout/success?order=${orderId}`
         };
