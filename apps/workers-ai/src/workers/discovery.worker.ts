@@ -6,6 +6,7 @@ import { pool } from '../lib/db.js';
 import { redis } from '../lib/redis.js'; 
 import { CJDropshippingService } from '../services/cj.service.js'; // ⚡ CJ INYECTADO
 import { MARKET_CONFIG } from '../config/constants.js';
+import { getMarketConfig as getMarketRollout } from '@aether/markets';
 import { calculateDiscoveryScore } from '../services/discovery-scoring.js';
 import { Request, Response } from 'express';
 import crypto from 'crypto';
@@ -39,6 +40,8 @@ interface CJProductItem {
 }
 
 const getMarketConfig = (country: string) => {
+  const rollout = getMarketRollout(country);
+  if (!rollout?.enabled) throw new Error(`Mercado no habilitado: ${country}`);
   const config = MARKET_CONFIG[country as keyof typeof MARKET_CONFIG];
   if (!config) throw new Error(`Mercado no soportado: ${country}`);
   return config;

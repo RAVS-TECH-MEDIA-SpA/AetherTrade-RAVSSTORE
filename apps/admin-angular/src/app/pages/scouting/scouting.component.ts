@@ -16,7 +16,7 @@ export class ScoutingComponent implements OnInit {
   public textoInput: string = '';
   public selectedNicheLimit: number = 5;  // Amplitud
   public selectedEliteLimit: number = 10; // Profundidad
-  public targetCountry: 'CL' | 'MX' = 'CL';
+  public targetCountry: 'CL' = 'CL';
   
   // Renombrado a isProcessing para coincidir con el error TS2339 del HTML
   public isProcessing: boolean = false; 

@@ -6,6 +6,8 @@ import Footer from '@/components/Footer';
 import TrustSection from '@/components/TrustSection';
 import ProductGridClient from '@/components/ProductGridClient';
 import ProductCarousel from '@/components/ProductCarousel';
+import ImmediateDeliverySection from '@/components/ImmediateDeliverySection';
+import StorefrontHero from '@/components/StorefrontHero';
 import { HowItWorks } from '@/components/ui/HowItWorks';
 import { Warranty } from '@/components/ui/Warranty';
 import { processProductPricing } from '@/lib/api'; 
@@ -113,70 +115,13 @@ export default async function HomePage() {
   const carouselsData = denseCarousels;
 
   return (
-    <div className="min-h-screen bg-[#020617] text-white selection:bg-violet-500/30 scroll-smooth overflow-x-hidden">
+    <div className="storefront-shell min-h-screen bg-[#020617] text-white selection:bg-violet-500/30 scroll-smooth overflow-x-hidden">
       <Navbar countryCode={countryCode} />
       
-      <main className="pt-40 md:pt-44">
-        <section className="container mx-auto px-4 mb-8">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 md:gap-4">
-            
-            <div className="lg:col-span-2 bg-gradient-to-br from-slate-900 to-slate-800 border border-slate-700/50 rounded-2xl p-6 md:p-10 flex flex-col justify-center relative overflow-hidden min-h-[220px] md:min-h-[320px] group">
-              <div className="absolute -right-20 -top-20 w-64 h-64 bg-violet-600/20 blur-[100px] rounded-full z-0" />
-              
-              <img 
-                src="/assets/photo-1586528116311-ad8dd3c8310d.avif" 
-                alt="Importación Directa" 
-                className="absolute inset-0 w-full h-full object-cover opacity-30 mix-blend-luminosity z-0 transition-transform duration-700 group-hover:scale-105"
-              />
+      <main className="pt-36 md:pt-32">
+        <StorefrontHero countryName={config.name} />
 
-              <div className="relative z-10">
-                <div className="inline-flex items-center gap-2 bg-rose-500/20 border border-rose-500/30 text-rose-400 px-3 py-1 rounded-md text-[10px] md:text-xs font-black uppercase tracking-widest mb-3">
-                  🔥 Venta Express
-                </div>
-                <h1 className="text-2xl md:text-5xl font-black mb-2 tracking-tight leading-none">
-                  Importación Directa a <br className="hidden md:block"/>
-                  <span className={`bg-clip-text text-transparent bg-gradient-to-r ${config.accent}`}>{config.name}</span>
-                </h1>
-                <p className="text-slate-400 text-xs md:text-sm max-w-md mt-2 mb-6">
-                  Los productos más virales del mundo, verificados. Precios finales, sin sorpresas aduaneras.
-                </p>
-                <a href="#tendencias" className="inline-block bg-violet-600 hover:bg-violet-500 text-white px-8 py-3 rounded-xl font-bold uppercase tracking-wider transition-all shadow-lg shadow-violet-900/50 hover:scale-105 active:scale-95 text-xs md:text-sm">
-                  Comprar Ahora
-                </a>
-              </div>
-            </div>
-
-            <div className="flex lg:flex-col gap-3 md:gap-4 overflow-x-auto pb-4 lg:pb-0 snap-x snap-mandatory scroll-smooth [&::-webkit-scrollbar]:hidden">
-              <div className="flex-none w-[85%] sm:w-[45%] lg:w-full snap-center bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700/50 rounded-2xl p-5 relative overflow-hidden flex flex-col justify-end min-h-[140px] md:min-h-[150px] group hover:border-violet-500/50 transition-colors cursor-pointer">
-                <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/10 blur-[50px] z-0" />
-                <img 
-                  src="/assets/novedades/photo-1505740420928-5e560c06d30e.avif" 
-                  alt="Novedades Gadgets" 
-                  className="absolute inset-0 w-full h-full object-cover opacity-40 mix-blend-luminosity z-0 transition-transform duration-700 group-hover:scale-110"
-                />
-                <div className="relative z-10">
-                  <span className="text-[10px] font-black uppercase text-blue-400 tracking-widest drop-shadow-md">Novedades</span>
-                  <h3 className="text-lg md:text-xl font-bold leading-tight mt-1 text-white">Gadgets 2026</h3>
-                </div>
-              </div>
-
-              <div className="flex-none w-[85%] sm:w-[45%] lg:w-full snap-center bg-gradient-to-br from-slate-900 to-slate-800 border border-slate-700/50 rounded-2xl p-5 relative overflow-hidden flex flex-col justify-end min-h-[140px] md:min-h-[150px] group hover:border-violet-500/50 transition-colors cursor-pointer">
-                <div className="absolute top-0 right-0 w-32 h-32 bg-rose-500/10 blur-[50px] z-0" />
-                <img 
-                  src="/assets/liquidacion/photo-1607082348824-0a96f2a4b9da.avif" 
-                  alt="Liquidación" 
-                  className="absolute inset-0 w-full h-full object-cover opacity-40 mix-blend-luminosity z-0 transition-transform duration-700 group-hover:scale-110"
-                />
-                <div className="relative z-10">
-                  <span className="text-[10px] font-black uppercase text-rose-400 tracking-widest drop-shadow-md">Liquidación</span>
-                  <h3 className="text-lg md:text-xl font-bold leading-tight mt-1 text-white">Hasta -50% Off</h3>
-                </div>
-              </div>
-            </div>
-
-          </div>
-        </section>
-
+        <ImmediateDeliverySection />
 
         <section id="tendencias" className="container mx-auto px-4 py-8 md:py-12">
           <div className="flex items-center justify-between mb-4 md:mb-6">

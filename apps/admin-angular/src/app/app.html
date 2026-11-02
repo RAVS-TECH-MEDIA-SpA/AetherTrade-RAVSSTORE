@@ -1,12 +1,24 @@
 <!-- src/app/app.html -->
-<div class="flex min-h-screen bg-[#0d1117]">
-  
-  <!-- Sidebar Fijo -->
-  <app-sidebar></app-sidebar>
+<div class="min-h-screen bg-[#0d1117] text-white">
+  <app-sidebar #sidebar></app-sidebar>
 
-  <!-- Contenido Principal -->
-  <!-- ml-64 compensa el ancho del sidebar para que no tape el dashboard -->
-  <main class="flex-1 ml-64 overflow-x-hidden">
+  <main class="min-h-screen min-w-0 md:ml-64">
+    <header class="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-[#30363d] bg-[#0d1117]/95 px-4 backdrop-blur-xl sm:px-6 lg:px-8">
+      <div class="flex items-center gap-3">
+        <button type="button" class="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-[#30363d] text-[#c9d1d9] hover:bg-[#161b22] md:hidden"
+                aria-label="Abrir menú" (click)="sidebar.toggleMobile()">
+          <span class="material-icons">menu</span>
+        </button>
+        <div>
+          <p class="text-sm font-bold text-white">Aether <span class="text-[#00f2ff]">Trade</span></p>
+          <p class="hidden text-[10px] font-semibold uppercase tracking-[0.18em] text-[#8b949e] sm:block">Panel comercial · Chile</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2 rounded-full border border-[#238636]/40 bg-[#238636]/10 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-[#3fb950]">
+        <span class="h-2 w-2 animate-pulse rounded-full bg-[#3fb950]"></span>
+        Admin local
+      </div>
+    </header>
     <router-outlet></router-outlet>
   </main>
 </div>

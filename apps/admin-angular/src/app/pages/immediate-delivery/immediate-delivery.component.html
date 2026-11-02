@@ -1,0 +1,49 @@
+<section class="min-h-[calc(100vh-4rem)] space-y-6 bg-[#0d1117] p-4 text-white sm:p-6 lg:p-8">
+  <header class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+    <div>
+      <p class="text-xs font-black uppercase tracking-[0.18em] text-emerald-300">Ravsstore · Chile</p>
+      <h1 class="mt-2 text-2xl font-black tracking-tight sm:text-3xl">Entrega inmediata</h1>
+      <p class="mt-2 max-w-2xl text-sm leading-6 text-[#8b949e]">
+        Vista de preparación para los productos con disponibilidad local que se mostrarán en la tienda madre.
+      </p>
+    </div>
+    <span class="w-fit rounded-full border border-amber-400/30 bg-amber-400/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-amber-200">
+      Catálogo de demostración
+    </span>
+  </header>
+
+  <div class="rounded-2xl border border-amber-400/20 bg-amber-400/5 p-4 text-sm leading-6 text-amber-100/90">
+    Estos registros son solo un mockup visual. No representan productos, stock ni plazos confirmados y no se publican en la landing como artículos comprables.
+  </div>
+
+  <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+    <article *ngFor="let product of products" class="overflow-hidden rounded-2xl border border-[#30363d] bg-[#161b22]">
+      <div class="flex aspect-[2/1] items-center justify-center bg-gradient-to-br from-emerald-950 via-slate-900 to-[#0d1117]">
+        <span class="material-icons text-5xl text-emerald-200/80">inventory_2</span>
+      </div>
+      <div class="space-y-4 p-5">
+        <div class="flex items-center justify-between gap-3">
+          <span class="rounded-full border border-[#30363d] px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-[#8b949e]">{{ product.category }}</span>
+          <span class="rounded-full bg-amber-400/10 px-2.5 py-1 text-[10px] font-black uppercase text-amber-200">{{ product.status }}</span>
+        </div>
+        <div>
+          <h2 class="font-bold text-white">{{ product.name }}</h2>
+          <p class="mt-1 text-xl font-black text-white">{{ product.price | currency:'CLP':'symbol-narrow':'1.0-0' }}</p>
+        </div>
+        <div class="grid grid-cols-2 gap-3 border-t border-[#30363d] pt-4 text-xs">
+          <div>
+            <p class="text-[#8b949e]">Stock local (demo)</p>
+            <p class="mt-1 font-bold text-white">{{ product.localStock }} unidades</p>
+          </div>
+          <div>
+            <p class="text-[#8b949e]">Plazo referencial</p>
+            <p class="mt-1 font-bold text-white">{{ product.estimatedDelivery }}</p>
+          </div>
+        </div>
+        <button type="button" disabled class="w-full cursor-not-allowed rounded-xl border border-[#30363d] bg-[#0d1117] px-4 py-2.5 text-xs font-bold text-[#6e7681]">
+          Integración de catálogo pendiente
+        </button>
+      </div>
+    </article>
+  </div>
+</section>

@@ -2,7 +2,7 @@
 'use client';
 
 import Link from 'next/link';
-import { Zap, Star } from 'lucide-react';
+import { Zap, Sparkles } from 'lucide-react';
 
 interface ProductCardProps {
   product: any;
@@ -55,16 +55,10 @@ export default function ProductCard({ product }: ProductCardProps) {
             {product.marketing_copy?.title_localized || product.title_original}
           </h3>
           
-          <div className="flex items-center gap-0.5 mt-auto pt-1">
-            <div className="flex text-rose-500">
-              <Star className="w-3 h-3 md:w-3.5 md:h-3.5 fill-current" />
-              <Star className="w-3 h-3 md:w-3.5 md:h-3.5 fill-current" />
-              <Star className="w-3 h-3 md:w-3.5 md:h-3.5 fill-current" />
-              <Star className="w-3 h-3 md:w-3.5 md:h-3.5 fill-current" />
-              <Star className="w-3 h-3 md:w-3.5 md:h-3.5 fill-current text-rose-500/30" />
-            </div>
-            <span className="text-slate-500 text-[9px] md:text-[10px] ml-1 font-medium text-nowrap">
-              +1k vendidos
+          <div className="flex items-center gap-1.5 pt-1 text-violet-300">
+            <Sparkles className="h-3 w-3" />
+            <span className="text-[9px] font-bold uppercase tracking-wider md:text-[10px]">
+              Selección RavsStore
             </span>
           </div>
 

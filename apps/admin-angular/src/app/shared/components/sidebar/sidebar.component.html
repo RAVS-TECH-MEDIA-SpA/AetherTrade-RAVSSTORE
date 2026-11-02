@@ -1,5 +1,7 @@
 <!-- apps/admin-angular/src/app/shared/components/sidebar/sidebar.component.html -->
-<aside class="fixed left-0 top-0 h-screen w-64 bg-[#0d1117] border-r border-[#30363d] flex flex-col z-50">
+<div *ngIf="mobileMenuOpen" class="fixed inset-0 z-40 bg-black/60 md:hidden" (click)="closeMobile()"></div>
+<aside [ngClass]="mobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'"
+       class="fixed left-0 top-0 z-50 flex h-screen w-64 flex-col border-r border-[#30363d] bg-[#0d1117] transition-transform duration-200 md:translate-x-0">
     
     <!-- Brand / Logo Section -->
     <div class="p-6 flex items-center gap-3">
@@ -10,22 +12,28 @@
     </div>
 
     <!-- Main Navigation Items -->
-    <nav class="flex-1 px-4 mt-4 space-y-2">
+    <div class="mx-4 mt-3 rounded-xl border border-[#30363d] bg-[#161b22] px-3 py-2 text-[10px] font-bold uppercase tracking-[0.16em] text-[#8b949e]">
+        <span class="mr-2 inline-block h-2 w-2 rounded-full bg-[#3fb950]"></span>Mercado activo · Chile
+    </div>
+
+    <nav class="mt-5 flex-1 space-y-1 px-3">
+        <p class="px-3 pb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-[#6e7681]">Operación comercial</p>
         <a *ngFor="let item of navItems" 
            [routerLink]="item.route"
+           (click)="closeMobile()"
            routerLinkActive="bg-[#161b22] text-[#00f2ff] border border-[#30363d]"
-           class="flex items-center gap-4 px-4 py-3 rounded-xl text-[#8b949e] hover:bg-[#161b22] hover:text-white transition-all group">
+           class="flex items-center gap-3 rounded-xl border border-transparent px-3 py-3 text-[#8b949e] transition-all hover:bg-[#161b22] hover:text-white group">
             <span class="material-icons text-xl group-hover:scale-110 transition-transform">{{ item.icon }}</span>
             <span class="font-medium tracking-wide text-sm">{{ item.label }}</span>
         </a>
     </nav>
 
     <!-- User Profile Section -->
-    <div class="p-4 border-t border-[#30363d] bg-[#161b22]/30">
+    <div class="border-t border-[#30363d] bg-[#161b22]/30 p-4">
         <div class="flex items-center gap-3 p-2">
             <div class="w-10 h-10 rounded-full bg-[#30363d] border-2 border-[#00f2ff]/30 overflow-hidden">
                 <!-- Imagen de marcador de posición profesional -->
-                <img src="https://ui-avatars.com/api/?name=Rodrigo+Dev&background=0d1117&color=00f2ff" alt="User profile">
+                <span class="flex h-full w-full items-center justify-center text-sm font-black text-[#00f2ff]">RV</span>
             </div>
             <div class="flex-1 min-w-0">
                 <p class="text-sm font-bold text-white truncate">{{ userName }}</p>

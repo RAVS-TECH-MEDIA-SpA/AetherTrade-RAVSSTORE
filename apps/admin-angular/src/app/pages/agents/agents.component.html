@@ -1,4 +1,4 @@
-<main class="min-h-screen w-[calc(100%-256px)] space-y-6 bg-[#0d1117] p-8 ml-64 text-white">
+<main class="min-h-[calc(100vh-4rem)] w-full space-y-6 bg-[#0d1117] p-4 text-white sm:p-6 lg:p-8">
   <header>
     <p class="text-xs font-black uppercase tracking-[0.2em] text-[#00f2ff]">Aether Trade · Operations</p>
     <h1 class="mt-2 text-3xl font-black italic">AI Agents</h1>
@@ -13,10 +13,7 @@
           <p class="mt-1 text-xs text-[#8b949e]">Responde con catálogo y precios vigentes del mercado elegido.</p>
         </div>
         <div class="flex gap-2">
-          <select [(ngModel)]="country" class="rounded-lg border border-[#30363d] bg-[#0d1117] px-3 py-2 text-xs">
-            <option value="CL">Chile · CLP</option>
-            <option value="MX">México · MXN</option>
-          </select>
+          <span class="rounded-lg border border-[#30363d] bg-[#0d1117] px-3 py-2 text-xs text-[#8b949e]">Chile · CLP</span>
           <select [(ngModel)]="mode" class="rounded-lg border border-[#30363d] bg-[#0d1117] px-3 py-2 text-xs">
             <option value="sales">Ventas</option>
             <option value="support">Soporte</option>

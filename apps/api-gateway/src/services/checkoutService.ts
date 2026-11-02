@@ -2,6 +2,7 @@ import { MercadoPagoConfig, Preference } from 'mercadopago';
 import { pool } from '../database.js'; 
 import { randomUUID } from 'crypto';
 import { z } from 'zod'; // ⚡ 1. Importar Zod
+import { getCheckoutMarket } from '@aether/markets';
 
 // ⚡ 2. Definir el esquema de validación y limpieza (puedes importar tu diccionario de regiones y comunas aquí)
 const validStates = ["Región Metropolitana", "Biobío", "Valparaíso"]; 
@@ -18,10 +19,20 @@ const shippingSchema = z.object({
 
 const client = new MercadoPagoConfig({ accessToken: process.env.MP_ACCESS_TOKEN || '' });
 
+export class MarketCheckoutDisabledError extends Error {
+  constructor(countryCode: string) {
+    super(`El checkout no está habilitado para ${countryCode}.`);
+    this.name = 'MarketCheckoutDisabledError';
+  }
+}
+
 export class CheckoutService {
 
   async createPreference(orderData: any, trackingData: any = {}) {
-    
+    const countryCode = String(orderData.countryCode || 'CL').trim().toUpperCase();
+    const market = getCheckoutMarket(countryCode);
+    if (!market) throw new MarketCheckoutDisabledError(countryCode);
+
     // ⚡ 3. Validar ANTES de abrir la conexión a la BD
     let validatedShipping;
     try {
@@ -61,7 +72,7 @@ export class CheckoutService {
         title: String(item.title || '').substring(0, 250),
         unit_price: Number(item.price), 
         quantity: Number(item.quantity),
-        currency_id: 'CLP'
+        currency_id: market.currency
       }));
       
       console.log("🚀 Creando preferencia en Mercado Pago con items:", mpItems);
@@ -112,7 +123,7 @@ export class CheckoutService {
       // ============================================================================
       const insertAddressQuery = `
         INSERT INTO customer_addresses (customer_id, street, number, city, state_province, postal_code, country_code, details)
-        VALUES ($1, $2, $3, $4, $5, $6, 'CL', $7)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         RETURNING id;
       `;
       
@@ -123,6 +134,7 @@ export class CheckoutService {
         validatedShipping.city,
         validatedShipping.state,
         validatedShipping.zip,
+        market.code,
         validatedShipping.details || null 
       ]);
       const addressId = addressResult.rows[0].id;

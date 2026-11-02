@@ -1,1 +1,87 @@
 @import "tailwindcss";
+
+html[data-theme='light'] body,
+html[data-theme='light'] .storefront-shell {
+  background-color: #f5f7fb;
+  color: #172033;
+}
+
+html[data-theme='light'] .storefront-shell [class~="bg-[#020617]"],
+html[data-theme='light'] .storefront-shell [class~="bg-slate-950"],
+html[data-theme='light'] .storefront-shell [class~="bg-slate-950/95"],
+html[data-theme='light'] .storefront-shell [class~="bg-slate-950/90"],
+html[data-theme='light'] .storefront-shell [class~="bg-slate-950/60"],
+html[data-theme='light'] .storefront-shell [class~="bg-slate-900"],
+html[data-theme='light'] .storefront-shell [class~="bg-slate-900/95"],
+html[data-theme='light'] .storefront-shell [class~="bg-slate-900/80"],
+html[data-theme='light'] .storefront-shell [class~="bg-slate-900/50"],
+html[data-theme='light'] .storefront-shell [class~="bg-slate-900/40"],
+html[data-theme='light'] .storefront-shell [class~="bg-slate-800"],
+html[data-theme='light'] .storefront-shell [class~="bg-slate-800/80"],
+html[data-theme='light'] .storefront-shell [class~="bg-white/[0.07]"],
+html[data-theme='light'] .storefront-shell [class~="bg-white/[0.04]"] {
+  background-color: #fff;
+}
+
+html[data-theme='light'] .storefront-shell [class~="text-white"] {
+  color: #172033;
+}
+
+html[data-theme='light'] .storefront-shell .bg-violet-600.text-white,
+html[data-theme='light'] .storefront-shell .bg-violet-500.text-white,
+html[data-theme='light'] .storefront-shell .bg-rose-500.text-white,
+html[data-theme='light'] .storefront-shell .bg-rose-600.text-white,
+html[data-theme='light'] .storefront-shell .bg-violet-600 .text-white,
+html[data-theme='light'] .storefront-shell .bg-violet-500 .text-white,
+html[data-theme='light'] .storefront-shell .bg-rose-500 .text-white,
+html[data-theme='light'] .storefront-shell .bg-rose-600 .text-white {
+  color: #fff;
+}
+
+html[data-theme='light'] .storefront-shell [class~="text-slate-300"],
+html[data-theme='light'] .storefront-shell [class~="text-slate-400"],
+html[data-theme='light'] .storefront-shell [class~="text-slate-500"],
+html[data-theme='light'] .storefront-shell [class~="text-slate-600"],
+html[data-theme='light'] .storefront-shell [class~="text-slate-700"] {
+  color: #58647a;
+}
+
+html[data-theme='light'] .storefront-shell [class~="border-slate-700"],
+html[data-theme='light'] .storefront-shell [class~="border-slate-800"],
+html[data-theme='light'] .storefront-shell [class~="border-slate-800/50"],
+html[data-theme='light'] .storefront-shell [class~="border-white/5"],
+html[data-theme='light'] .storefront-shell [class~="border-white/10"],
+html[data-theme='light'] .storefront-shell [class~="border-white/15"] {
+  border-color: #dce2ed;
+}
+
+html[data-theme='light'] .storefront-shell .storefront-hero {
+  border-color: #e2e8f0;
+  background-color: #fff;
+  box-shadow: 0 24px 70px -35px rgba(79, 70, 229, 0.28);
+}
+
+html[data-theme='light'] .storefront-shell .storefront-hero [class~="bg-slate-950/60"],
+html[data-theme='light'] .storefront-shell .storefront-hero [class~="bg-slate-950/90"] {
+  background-color: rgba(248, 250, 252, 0.92);
+}
+
+html[data-theme='light'] .storefront-shell #entrega-inmediata > div {
+  border-color: #d1fae5;
+  background-color: #ecfdf5;
+  background-image: none;
+}
+
+html[data-theme='light'] .storefront-shell #entrega-inmediata article {
+  border-color: #dce2ed;
+  background-color: #fff;
+}
+
+html[data-theme='light'] .storefront-shell #entrega-inmediata article [class*="bg-gradient-to-br"] {
+  background-image: linear-gradient(135deg, #dbeafe, #ede9fe);
+}
+
+html[data-theme='light'] .storefront-shell input {
+  background-color: #fff;
+  color: #172033;
+}

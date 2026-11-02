@@ -16,17 +16,15 @@ interface NavItem {
   templateUrl: './sidebar.component.html'
 })
 export class SidebarComponent {
-  
-  // Estructura del menú basada en la maqueta Aether Dashboard 2026
- // apps/admin-angular/src/app/shared/components/sidebar/sidebar.component.ts
-navItems: NavItem[] = [
-  { icon: 'dashboard', label: 'Dashboard', route: '/dashboard' },
-  { icon: 'rocket_launch', label: 'Scouting', route: '/scouting' }, // El "Corazón" de la búsqueda
-  { icon: 'inventory_2', label: 'Inventory', route: '/inventory' }, // Los 77 productos actuales
-  { icon: 'smart_toy', label: 'AI Agents', route: '/agents' },
-  { icon: 'query_stats', label: 'Trends', route: '/trends' },
-  { icon: 'settings', label: 'Settings', route: '/settings' }
-];
+  mobileMenuOpen = false;
+
+  navItems: NavItem[] = [
+    { icon: 'dashboard', label: 'Panel general', route: '/dashboard' },
+    { icon: 'rocket_launch', label: 'Scouting', route: '/scouting' },
+    { icon: 'inventory_2', label: 'Catálogo', route: '/inventory' },
+    { icon: 'local_shipping', label: 'Entrega inmediata', route: '/immediate-delivery' },
+    { icon: 'smart_toy', label: 'Agentes IA', route: '/agents' }
+  ];
 
   // Datos del perfil (pueden venir de un Auth Service luego)
   userName = 'Rodrigo Vargas Sanhueza';
@@ -34,5 +32,13 @@ navItems: NavItem[] = [
 
   logout(): void {
     console.log('Cerrando sesión en Aether Trade...');
+  }
+
+  toggleMobile(): void {
+    this.mobileMenuOpen = !this.mobileMenuOpen;
+  }
+
+  closeMobile(): void {
+    this.mobileMenuOpen = false;
   }
 }

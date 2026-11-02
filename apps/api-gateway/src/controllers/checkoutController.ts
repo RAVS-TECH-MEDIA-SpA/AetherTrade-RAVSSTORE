@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { CheckoutService } from '../services/checkoutService.js';
+import { CheckoutService, MarketCheckoutDisabledError } from '../services/checkoutService.js';
 
 const checkoutService = new CheckoutService();
 
@@ -31,6 +31,9 @@ console.log("llamando a createPreference con orderData y trackingData:", orderDa
     res.status(200).json(result);
   } catch (error: any) {
     console.error('❌ Error en Controlador de Checkout:', error.message);
+    if (error instanceof MarketCheckoutDisabledError) {
+      return res.status(400).json({ error: error.message });
+    }
     res.status(500).json({ error: 'Error interno al procesar el pago' });
   }
 };

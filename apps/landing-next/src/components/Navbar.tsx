@@ -1,7 +1,7 @@
 // src/components/Navbar.tsx
 'use client';
 
-import { Zap, ShoppingBag, Search, ShieldCheck, Loader2, ChevronRight, ChevronLeft } from 'lucide-react';
+import { Zap, ShoppingBag, Search, ShieldCheck, Loader2, ChevronRight, ChevronLeft, Moon, Sun } from 'lucide-react';
 import Link from 'next/link';
 import { useState, useEffect, useRef } from 'react';
 import { useCartStore } from '@/store/cartStore'; 
@@ -24,6 +24,7 @@ export default function Navbar({ countryCode = 'CL' }: NavbarProps) {
   
   const [isMounted, setIsMounted] = useState(false);
   const [isCartOpen, setIsCartOpen] = useState(false); 
+  const [isLightTheme, setIsLightTheme] = useState(false);
 
   // ⚡ Estados del Buscador Predictivo
   const [searchQuery, setSearchQuery] = useState('');
@@ -37,7 +38,20 @@ export default function Navbar({ countryCode = 'CL' }: NavbarProps) {
   const [showLeftArrow, setShowLeftArrow] = useState(false);
   const [showRightArrow, setShowRightArrow] = useState(true);
 
-  useEffect(() => setIsMounted(true), []);
+  useEffect(() => {
+    setIsMounted(true);
+    const savedTheme = window.localStorage.getItem('ravsstore-theme');
+    const lightTheme = savedTheme === 'light';
+    document.documentElement.dataset.theme = lightTheme ? 'light' : 'dark';
+    setIsLightTheme(lightTheme);
+  }, []);
+
+  const toggleTheme = () => {
+    const nextIsLight = !isLightTheme;
+    document.documentElement.dataset.theme = nextIsLight ? 'light' : 'dark';
+    window.localStorage.setItem('ravsstore-theme', nextIsLight ? 'light' : 'dark');
+    setIsLightTheme(nextIsLight);
+  };
 
   // ⚡ Lógica "Debounce" para el buscador
   useEffect(() => {
@@ -123,6 +137,15 @@ export default function Navbar({ countryCode = 'CL' }: NavbarProps) {
 
           {/* 3. ACCIONES / CARRITO */}
           <div className="flex items-center justify-end md:w-1/4 order-2 md:order-3">
+            <button
+              type="button"
+              onClick={toggleTheme}
+              aria-label={isLightTheme ? 'Activar modo oscuro' : 'Activar modo claro'}
+              title={isLightTheme ? 'Modo oscuro' : 'Modo claro'}
+              className="mr-2 inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-800 bg-slate-900/50 text-slate-300 transition hover:border-violet-500/50 hover:text-violet-300"
+            >
+              {isLightTheme ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
+            </button>
             <button 
               onClick={() => setIsCartOpen(true)}
               className="relative flex items-center gap-2.5 bg-transparent md:bg-slate-900/50 hover:bg-slate-800 md:border md:border-slate-800 text-white p-2 md:px-4 md:py-2 rounded-xl transition-all group"

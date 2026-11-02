@@ -270,6 +270,7 @@ export default function CheckoutPage() {
       localStorage.setItem('last_order_backup', JSON.stringify({ items, total: getTotalPrice() }));
 
       const payload = {
+        countryCode: 'CL',
         customerInfo: {
           email: shippingData.email.trim().toLowerCase(),
           name: `${cleanText(shippingData.firstName)} ${cleanText(shippingData.lastName)}`,

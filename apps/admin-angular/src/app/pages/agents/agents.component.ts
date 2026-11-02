@@ -16,7 +16,7 @@ interface AgentMessage {
   templateUrl: './agents.component.html'
 })
 export class AgentsComponent {
-  public country: 'CL' | 'MX' = 'CL';
+  public country: 'CL' = 'CL';
   public mode: 'sales' | 'support' = 'sales';
   public message = '';
   public isSending = false;
